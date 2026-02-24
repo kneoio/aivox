@@ -1,5 +1,6 @@
 package com.semantyca.aivox.memory;
 
+import com.semantyca.aivox.llm.LlmClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -20,8 +21,11 @@ public class BrandMemoryManager {
     
     private final Map<String, List<MemoryEntry>> inMemoryCache = new ConcurrentHashMap<>();
     
-    @Inject BrandMemoryRepository repository;
-    @Inject com.semantyca.aivox.llm.LlmClient llmClient;
+    @Inject
+    BrandMemoryRepository repository;
+
+    @Inject
+    LlmClient llmClient;
     
     @ConfigProperty(name = "memory.max.entries", defaultValue = "20")
     int maxEntries;

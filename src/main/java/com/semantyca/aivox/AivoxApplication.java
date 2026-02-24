@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 
+import com.semantyca.aivox.rest.DebugResource;
 import com.semantyca.aivox.rest.StreamingResource;
 
 @ApplicationScoped
@@ -13,8 +14,12 @@ public class AivoxApplication {
 
     @Inject
     StreamingResource streamingResource;
+    
+    @Inject
+    DebugResource debugResource;
 
     void setupRoutes(@Observes StartupEvent event, Router router) {
         streamingResource.setupRoutes(router);
+        debugResource.setupRoutes(router);
     }
 }

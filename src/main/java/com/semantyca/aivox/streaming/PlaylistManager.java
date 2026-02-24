@@ -36,12 +36,17 @@ public class PlaylistManager {
     private final AivoxConfig aivoxConfig;
     private final HlsConfig hlsConfig;
     private final com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor;
+    private final WaitingAudioProvider waitingAudioProvider;
 
     @Inject
-    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor) {
+    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.radioDJProcessor = radioDJProcessor;
+        this.waitingAudioProvider = waitingAudioProvider;
+        
+        // Initialize waiting audio
+        waitingAudioProvider.initialize();
         
         // Start self-managing scheduler
         scheduler.scheduleAtFixedRate(() -> {
@@ -90,36 +95,45 @@ public class PlaylistManager {
         // In a real implementation, this would fetch from a database or external service
         // For now, we'll simulate with placeholder fragments
         for (int i = 0; i < quantityToFetch; i++) {
-            LiveSoundFragment fragment = createPlaceholderFragment(brand);
-            state.regularQueue.offer(fragment);
+            createPlaceholderFragment(brand)
+                .subscribe().with(fragment -> {
+                    state.regularQueue.offer(fragment);
+                });
         }
     }
 
-    private LiveSoundFragment createPlaceholderFragment(String brand) {
-        LiveSoundFragment fragment = new LiveSoundFragment();
-        fragment.setSoundFragmentId(UUID.randomUUID());
-        fragment.setMetadata(new SongMetadata(fragment.getSoundFragmentId(), "Placeholder Song", "Placeholder Artist"));
-        
-        // Create placeholder segments
-        Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = new HashMap<>();
-        long[] bitrates = {128000L, 64000L};
-        
-        for (long bitrate : bitrates) {
-            ConcurrentLinkedQueue<HlsSegment> segmentQueue = new ConcurrentLinkedQueue<>();
-            // Create a few placeholder segments
-            for (int i = 0; i < 3; i++) {
-                HlsSegment segment = new HlsSegment();
-                segment.setSequence(i);
-                segment.setDuration(6); // 6 seconds
-                segment.setData(new byte[1024]); // Placeholder data
-                segment.setSongMetadata(fragment.getMetadata());
-                segmentQueue.offer(segment);
+    private Uni<LiveSoundFragment> createPlaceholderFragment(String brand) {
+        if (waitingAudioProvider.isWaitingAudioAvailable()) {
+            LOGGER.debug("Using waiting audio for brand: " + brand);
+            return waitingAudioProvider.createWaitingFragment();
+        } else {
+            // Fallback to creating a simple placeholder
+            LOGGER.warn("Waiting audio not available, using simple placeholder for brand: " + brand);
+            LiveSoundFragment fragment = new LiveSoundFragment();
+            fragment.setSoundFragmentId(UUID.randomUUID());
+            fragment.setMetadata(new SongMetadata(fragment.getSoundFragmentId(), "Placeholder Song", "Placeholder Artist"));
+            
+            // Create placeholder segments
+            Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = new HashMap<>();
+            long[] bitrates = {128000L, 64000L};
+            
+            for (long bitrate : bitrates) {
+                ConcurrentLinkedQueue<HlsSegment> segmentQueue = new ConcurrentLinkedQueue<>();
+                // Create a few placeholder segments
+                for (int i = 0; i < 3; i++) {
+                    HlsSegment segment = new HlsSegment();
+                    segment.setSequence(i);
+                    segment.setDuration(6); // 6 seconds
+                    segment.setData(new byte[1024]); // Placeholder data
+                    segment.setSongMetadata(fragment.getMetadata());
+                    segmentQueue.offer(segment);
+                }
+                segments.put(bitrate, segmentQueue);
             }
-            segments.put(bitrate, segmentQueue);
+            
+            fragment.setSegments(segments);
+            return Uni.createFrom().item(fragment);
         }
-        
-        fragment.setSegments(segments);
-        return fragment;
     }
 
     public List<AudioFile> getNextAudioFiles(String brand) {
@@ -174,10 +188,15 @@ public class PlaylistManager {
             return nextFragment;
         }
 
-        // If both queues are empty, try to feed more fragments
-        feedFragments(brand, 1, true);
-        
-        return null;
+        // If both queues are empty, try to feed more fragments or use waiting audio
+        if (waitingAudioProvider.isWaitingAudioAvailable()) {
+            LOGGER.debug("Both queues empty for brand " + brand + ", using waiting audio");
+            return waitingAudioProvider.createWaitingFragment()
+                .await().indefinitely();
+        } else {
+            feedFragments(brand, 1, true);
+            return null;
+        }
     }
 
     private void moveFragmentToProcessedList(String brand, LiveSoundFragment fragmentToPlay) {

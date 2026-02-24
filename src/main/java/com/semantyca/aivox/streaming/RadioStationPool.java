@@ -28,6 +28,9 @@ public class RadioStationPool {
     
     @Inject
     RadioDJProcessor radioDJProcessor;
+    
+    @Inject
+    WaitingAudioProvider waitingAudioProvider;
 
     public Uni<RadioStationBundle> initializeStation(String brandName) {
         LOGGER.info("Attempting to initialize station for brand: " + brandName);
@@ -49,7 +52,7 @@ public class RadioStationPool {
                         LOGGER.info("Creating new StreamManager and PlaylistManager bundle for brand: " + key);
                         
                         // Create new instances for this brand
-                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor);
+                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor, waitingAudioProvider);
                         StreamManager streamManager = new StreamManager(playlistManager, hlsConfig);
                         
                         RadioStationBundle newBundle = new RadioStationBundle(key, streamManager, playlistManager);
