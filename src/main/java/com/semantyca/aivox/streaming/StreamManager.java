@@ -1,10 +1,9 @@
 package com.semantyca.aivox.streaming;
 
+import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.AudioFile;
-import io.quarkus.scheduler.Scheduled;
-import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.time.ZoneId;
@@ -20,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@ApplicationScoped
+@Dependent
 public class StreamManager {
     private static final ZoneId ZONE_ID = ZoneId.of("Europe/Lisbon");
     private static final Logger LOGGER = Logger.getLogger(StreamManager.class);
@@ -30,16 +29,15 @@ public class StreamManager {
     private static final int SEGMENTS_TO_DRIP_PER_FEED_CALL = 1;
 
     private final Map<String, StreamState> streamStates = new ConcurrentHashMap<>();
+    private final PlaylistManager playlistManager;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    private final HlsConfig hlsConfig;
 
     @Inject
-    PlaylistManager playlistManager;
-
-    @ConfigProperty(name = "hls.segment.duration", defaultValue = "6")
-    int segmentDuration;
-
-    @ConfigProperty(name = "hls.max.visible.segments", defaultValue = "20")
-    int maxVisibleSegments;
+    public StreamManager(PlaylistManager playlistManager, HlsConfig hlsConfig) {
+        this.playlistManager = playlistManager;
+        this.hlsConfig = hlsConfig;
+    }
 
     private static final int PENDING_QUEUE_REFILL_THRESHOLD = 10;
 
@@ -74,7 +72,7 @@ public class StreamManager {
                 .append("#EXT-X-VERSION:3\n")
                 .append("#EXT-X-ALLOW-CACHE:NO\n")
                 .append("#EXT-X-PLAYLIST-TYPE:EVENT\n")
-                .append("#EXT-X-TARGETDURATION:").append(segmentDuration).append("\n");
+                .append("#EXT-X-TARGETDURATION:").append(hlsConfig.getSegmentDuration()).append("\n");
 
         long firstSequenceInWindow = state.liveSegments.firstKey();
         playlist.append("#EXT-X-MEDIA-SEQUENCE:").append(firstSequenceInWindow).append("\n");
@@ -83,7 +81,7 @@ public class StreamManager {
                 .append("\n");
 
         state.liveSegments.tailMap(firstSequenceInWindow).entrySet().stream()
-                .limit(maxVisibleSegments)
+                .limit(hlsConfig.getMaxVisibleSegments())
                 .forEach(entry -> {
                     Map<Long, HlsSegment> bitrateSlot = entry.getValue();
                     HlsSegment segment = bitrateSlot.containsKey(targetBitrate)
@@ -154,7 +152,8 @@ public class StreamManager {
         }
     }
 
-    @Scheduled(every = "{hls.segment.duration}s")
+    // Note: Scheduled methods removed since StreamManager is now @Dependent
+    // The scheduling is handled by the RadioStationPool or should be moved to a separate @ApplicationScoped service
     public void feedSegments() {
         executorService.submit(() -> {
             for (Map.Entry<String, StreamState> entry : streamStates.entrySet()) {
@@ -168,8 +167,8 @@ public class StreamManager {
     private void feedSegmentsForBrand(String brand, StreamState state) {
         if (!state.pendingQueue.isEmpty()) {
             for (int i = 0; i < SEGMENTS_TO_DRIP_PER_FEED_CALL; i++) {
-                if (state.liveSegments.size() >= maxVisibleSegments * 2) {
-                    LOGGER.debug("Live segments buffer for " + brand + " is full (" + state.liveSegments.size() + "/" + (maxVisibleSegments * 2) + "). Pausing drip-feed.");
+                if (state.liveSegments.size() >= hlsConfig.getMaxVisibleSegments() * 2) {
+                    LOGGER.debug("Live segments buffer for " + brand + " is full (" + state.liveSegments.size() + "/" + (hlsConfig.getMaxVisibleSegments() * 2) + "). Pausing drip-feed.");
                     break;
                 }
                 Map<Long, HlsSegment> bitrateSlot = state.pendingQueue.poll();
@@ -205,7 +204,7 @@ public class StreamManager {
             for (long bitrate : bitrates) {
                 HlsSegment segment = new HlsSegment();
                 segment.setSequence(seq);
-                segment.setDuration(segmentDuration);
+                segment.setDuration(hlsConfig.getSegmentDuration());
                 segment.setData(audioFile.getData()); // In real implementation, this would be segmented audio
                 segment.setSongMetadata(new SongMetadata(audioFile.getSongId(), "Generated Song", "Generated Artist"));
                 bitrateSlot.put(bitrate, segment);
@@ -215,7 +214,7 @@ public class StreamManager {
         }
     }
 
-    @Scheduled(every = "30s")
+    // Note: Scheduled methods removed since StreamManager is now @Dependent
     public void slideWindow() {
         executorService.submit(() -> {
             for (Map.Entry<String, StreamState> entry : streamStates.entrySet()) {
@@ -231,7 +230,7 @@ public class StreamManager {
             return;
         }
         
-        while (state.liveSegments.size() > maxVisibleSegments) {
+        while (state.liveSegments.size() > hlsConfig.getMaxVisibleSegments()) {
             state.liveSegments.pollFirstEntry();
         }
     }
@@ -259,7 +258,7 @@ public class StreamManager {
         return "#EXTM3U\n" +
                 "#EXT-X-VERSION:3\n" +
                 "#EXT-X-ALLOW-CACHE:NO\n" +
-                "#EXT-X-TARGETDURATION:" + segmentDuration + "\n" +
+                "#EXT-X-TARGETDURATION:" + hlsConfig.getSegmentDuration() + "\n" +
                 "#EXT-X-MEDIA-SEQUENCE:0\n";
     }
 

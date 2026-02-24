@@ -1,5 +1,6 @@
 package com.semantyca.aivox.memory;
 
+import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,6 +10,7 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.util.Objects;
 
+@Embeddable
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter

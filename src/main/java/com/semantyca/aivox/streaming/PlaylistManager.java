@@ -1,8 +1,10 @@
 package com.semantyca.aivox.streaming;
 
+import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.AudioFile;
 import io.smallrye.mutiny.Uni;
-import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
@@ -15,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-@ApplicationScoped
+@Dependent
 public class PlaylistManager {
     private static final Logger LOGGER = Logger.getLogger(PlaylistManager.class);
     private static final int SELF_MANAGING_INTERVAL_SECONDS = 100;
@@ -30,11 +32,17 @@ public class PlaylistManager {
     private final Map<String, PlaylistState> playlistStates = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private volatile long lastStarvingFeedTime = 0;
+    
+    private final AivoxConfig aivoxConfig;
+    private final HlsConfig hlsConfig;
+    private final com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor;
 
     @Inject
-    com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor;
-
-    public PlaylistManager() {
+    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor) {
+        this.aivoxConfig = aivoxConfig;
+        this.hlsConfig = hlsConfig;
+        this.radioDJProcessor = radioDJProcessor;
+        
         // Start self-managing scheduler
         scheduler.scheduleAtFixedRate(() -> {
             try {

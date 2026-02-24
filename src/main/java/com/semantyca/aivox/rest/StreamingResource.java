@@ -1,7 +1,6 @@
 package com.semantyca.aivox.rest;
 
-import com.semantyca.aivox.streaming.HlsSegment;
-import com.semantyca.aivox.streaming.StreamManager;
+import com.semantyca.aivox.service.StreamingService;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
@@ -17,7 +16,8 @@ public class StreamingResource {
     
     private static final Logger LOGGER = Logger.getLogger(StreamingResource.class);
     
-    @Inject StreamManager streamManager;
+    @Inject 
+    private StreamingService streamingService;
     
     public void setupRoutes(Router router) {
         String path = "/api/stream";
@@ -31,11 +31,20 @@ public class StreamingResource {
         String brand = rc.pathParam("brand").toLowerCase();
         
         try {
-            String playlist = streamManager.generateMasterPlaylist(brand);
-            rc.response()
-                .putHeader("Content-Type", "application/vnd.apple.mpegurl")
-                .putHeader("Cache-Control", "no-cache")
-                .end(playlist);
+            streamingService.getMasterPlaylist(brand)
+                .onItem().transform(playlist -> {
+                    rc.response()
+                        .putHeader("Content-Type", "application/vnd.apple.mpegurl")
+                        .putHeader("Cache-Control", "no-cache")
+                        .end(playlist);
+                    return playlist;
+                })
+                .onFailure().invoke(failure -> {
+                    LOGGER.error("Failed to generate master playlist for brand: " + brand, failure);
+                    rc.response().setStatusCode(404).end("Stream not found");
+                })
+                .subscribe();
+                
         } catch (Exception e) {
             LOGGER.error("Failed to generate master playlist for brand: " + brand, e);
             rc.response().setStatusCode(404).end("Stream not found");
@@ -48,16 +57,20 @@ public class StreamingResource {
             Long.parseLong(rc.request().getParam("bitrate")) : null;
         
         try {
-            // Use default bitrate if not specified
-            if (bitrate == null) {
-                bitrate = 128000L; // Default to 128k
-            }
-            
-            String playlist = streamManager.generatePlaylist(brand, bitrate);
-            rc.response()
-                .putHeader("Content-Type", "application/vnd.apple.mpegurl")
-                .putHeader("Cache-Control", "no-cache")
-                .end(playlist);
+            streamingService.getStreamPlaylist(brand, bitrate)
+                .onItem().transform(playlist -> {
+                    rc.response()
+                        .putHeader("Content-Type", "application/vnd.apple.mpegurl")
+                        .putHeader("Cache-Control", "no-cache")
+                        .end(playlist);
+                    return playlist;
+                })
+                .onFailure().invoke(failure -> {
+                    LOGGER.error("Failed to generate playlist for brand: " + brand + ", bitrate: " + bitrate, failure);
+                    rc.response().setStatusCode(404).end("Stream not found");
+                })
+                .subscribe();
+                
         } catch (Exception e) {
             LOGGER.error("Failed to generate playlist for brand: " + brand + ", bitrate: " + bitrate, e);
             rc.response().setStatusCode(404).end("Stream not found");
@@ -69,16 +82,29 @@ public class StreamingResource {
         String brand = rc.pathParam("brand").toLowerCase();
         
         try {
-            HlsSegment segment = streamManager.getSegment(brand, segmentFile);
-            
-            if (segment == null) {
-                throw new WebApplicationException(Response.Status.NOT_FOUND);
-            }
-            
-            rc.response()
-                .putHeader("Content-Type", "video/MP2T")
-                .putHeader("Cache-Control", "no-cache")
-                .end(Buffer.buffer(segment.getData()));
+            streamingService.getSegment(brand, segmentFile)
+                .onItem().transform(segmentData -> {
+                    if (segmentData == null) {
+                        throw new WebApplicationException(Response.Status.NOT_FOUND);
+                    }
+                    
+                    rc.response()
+                        .putHeader("Content-Type", "video/MP2T")
+                        .putHeader("Cache-Control", "no-cache")
+                        .end(Buffer.buffer(segmentData));
+                    return segmentData;
+                })
+                .onFailure().invoke(failure -> {
+                    LOGGER.error("Failed to get segment: " + segmentFile + " for brand: " + brand, failure);
+                    if (failure instanceof WebApplicationException) {
+                        WebApplicationException wae = (WebApplicationException) failure;
+                        rc.response().setStatusCode(wae.getResponse().getStatus()).end("Segment not found");
+                    } else {
+                        rc.response().setStatusCode(500).end("Error serving segment");
+                    }
+                })
+                .subscribe();
+                
         } catch (WebApplicationException e) {
             rc.response().setStatusCode(e.getResponse().getStatus()).end("Segment not found");
         } catch (Exception e) {

@@ -23,6 +23,7 @@ import java.util.List;
 public class ElevenLabsTtsEngine implements TtsEngine {
     
     private static final Logger LOGGER = Logger.getLogger(ElevenLabsTtsEngine.class);
+    private static final TtsProvider PROVIDER = TtsProvider.ELEVENLABS;
     
     @ConfigProperty(name = "tts.elevenlabs.api-key")
     String apiKey;

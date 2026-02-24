@@ -7,6 +7,7 @@ import com.semantyca.aivox.messaging.QueueClient;
 import com.semantyca.aivox.model.LiveRadioStationDTO;
 import com.semantyca.aivox.model.SongPromptDTO;
 import com.semantyca.aivox.tts.TtsEngine;
+import com.semantyca.aivox.tts.TtsManager;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -21,7 +22,7 @@ public class RadioDJProcessor {
     private static final Logger LOGGER = Logger.getLogger(RadioDJProcessor.class);
     
     @Inject LlmClient llmClient;
-    @Inject TtsEngine ttsEngine;
+    @Inject TtsManager ttsManager;
     @Inject QueueClient queueClient;
     @Inject
     BrandMemoryManager memoryManager;
@@ -78,6 +79,7 @@ public class RadioDJProcessor {
         
         List<Uni<AudioFile>> audioUnis = intros.stream()
             .map(intro -> {
+                TtsEngine ttsEngine = ttsManager.getDefaultEngine();
                 if (intro.isDialogue()) {
                     return ttsEngine.generateDialogue(
                         intro.getText(),

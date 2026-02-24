@@ -19,6 +19,7 @@ import java.util.Base64;
 public class AzureTtsEngine implements TtsEngine {
     
     private static final Logger LOGGER = Logger.getLogger(AzureTtsEngine.class);
+    private static final TtsProvider PROVIDER = TtsProvider.AZURE;
     
     @ConfigProperty(name = "tts.azure.api-key")
     String apiKey;
