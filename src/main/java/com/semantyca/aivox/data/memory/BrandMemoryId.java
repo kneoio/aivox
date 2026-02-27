@@ -1,4 +1,4 @@
-package com.semantyca.aivox.memory;
+package com.semantyca.aivox.data.memory;
 
 import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;

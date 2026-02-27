@@ -1,4 +1,4 @@
-package com.semantyca.aivox.memory;
+package com.semantyca.aivox.data.memory;
 
 import io.quarkus.hibernate.reactive.panache.PanacheEntityBase;
 import jakarta.persistence.Column;

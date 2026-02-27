@@ -1,4 +1,4 @@
-package com.semantyca.aivox.memory;
+package com.semantyca.aivox.data.memory;
 
 import com.semantyca.aivox.llm.LlmClient;
 import io.smallrye.mutiny.Uni;

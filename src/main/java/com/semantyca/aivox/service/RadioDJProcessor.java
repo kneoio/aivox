@@ -2,7 +2,7 @@ package com.semantyca.aivox.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semantyca.aivox.llm.LlmClient;
-import com.semantyca.aivox.memory.BrandMemoryManager;
+import com.semantyca.aivox.data.memory.BrandMemoryManager;
 import com.semantyca.aivox.messaging.QueueClient;
 import com.semantyca.aivox.model.LiveRadioStationDTO;
 import com.semantyca.aivox.model.SongPromptDTO;
