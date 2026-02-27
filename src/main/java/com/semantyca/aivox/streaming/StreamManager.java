@@ -2,6 +2,7 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.AudioFile;
+import com.semantyca.aivox.service.playlist.PlaylistManager;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;

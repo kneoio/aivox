@@ -1,5 +1,6 @@
 package com.semantyca.aivox.streaming;
 
+import com.semantyca.aivox.service.playlist.PlaylistManager;
 import lombok.Getter;
 import org.jboss.logging.Logger;
 

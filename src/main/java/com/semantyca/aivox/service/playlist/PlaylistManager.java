@@ -1,8 +1,12 @@
-package com.semantyca.aivox.streaming;
+package com.semantyca.aivox.service.playlist;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.AudioFile;
+import com.semantyca.aivox.streaming.HlsSegment;
+import com.semantyca.aivox.streaming.LiveSoundFragment;
+import com.semantyca.aivox.streaming.SongMetadata;
+import com.semantyca.aivox.streaming.WaitingAudioProvider;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;

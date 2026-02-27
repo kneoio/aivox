@@ -3,6 +3,7 @@ package com.semantyca.aivox.streaming;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.RadioDJProcessor;
+import com.semantyca.aivox.service.playlist.PlaylistManager;
 import io.smallrye.mutiny.Uni;
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
