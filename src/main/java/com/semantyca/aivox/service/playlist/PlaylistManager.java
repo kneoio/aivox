@@ -91,20 +91,21 @@ public class PlaylistManager {
         int quantityToFetch = Math.min(remaining, maxQuantity);
         LOGGER.info("Adding " + quantityToFetch + " fragments for brand " + brand);
 
-        // In a real implementation, this would fetch from a database or external service
-        // For now, we'll simulate with placeholder fragments
+        // Create placeholder fragments synchronously for immediate availability
         for (int i = 0; i < quantityToFetch; i++) {
-            createPlaceholderFragment(brand)
-                .subscribe().with(fragment -> {
-                    state.regularQueue.offer(fragment);
-                });
+            LiveSoundFragment fragment = createPlaceholderFragmentSync(brand);
+            if (fragment != null) {
+                state.regularQueue.offer(fragment);
+                LOGGER.info("Added placeholder fragment to regular queue for brand: " + brand);
+            }
         }
     }
 
-    private Uni<LiveSoundFragment> createPlaceholderFragment(String brand) {
+    private LiveSoundFragment createPlaceholderFragmentSync(String brand) {
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             LOGGER.debug("Using waiting audio for brand: " + brand);
-            return waitingAudioProvider.createWaitingFragment();
+            return waitingAudioProvider.createWaitingFragment()
+                .await().atMost(java.time.Duration.ofSeconds(5));
         } else {
             // Fallback to creating a simple placeholder
             LOGGER.warn("Waiting audio not available, using simple placeholder for brand: " + brand);
@@ -131,18 +132,25 @@ public class PlaylistManager {
             }
             
             fragment.setSegments(segments);
-            return Uni.createFrom().item(fragment);
+            return fragment;
         }
     }
 
+    private Uni<LiveSoundFragment> createPlaceholderFragment(String brand) {
+        return Uni.createFrom().item(() -> createPlaceholderFragmentSync(brand));
+    }
+
     public List<AudioFile> getNextAudioFiles(String brand) {
+        LOGGER.info("getNextAudioFiles called for brand: " + brand);
         PlaylistState state = playlistStates.get(brand);
         if (state == null) {
+            LOGGER.warn("No playlist state found for brand: " + brand + ", creating new state");
             state = new PlaylistState();
             playlistStates.put(brand, state);
         }
 
         LiveSoundFragment fragment = getNextFragment(brand);
+        LOGGER.info("getNextFragment returned: " + (fragment != null ? "fragment with ID " + fragment.getSoundFragmentId() : "NULL"));
         if (fragment == null) {
             return Collections.emptyList();
         }
@@ -150,6 +158,7 @@ public class PlaylistManager {
         // Convert LiveSoundFragment to AudioFile
         List<AudioFile> audioFiles = new ArrayList<>();
         Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = fragment.getSegments();
+        LOGGER.info("Fragment has " + (segments != null ? segments.size() : 0) + " bitrate variants");
         
         if (segments != null && !segments.isEmpty()) {
             // Get the highest bitrate segments
@@ -157,6 +166,7 @@ public class PlaylistManager {
             ConcurrentLinkedQueue<HlsSegment> segmentQueue = segments.get(maxBitrate);
             
             if (segmentQueue != null) {
+                LOGGER.info("SegmentQueue for bitrate " + maxBitrate + " has " + segmentQueue.size() + " segments");
                 for (HlsSegment segment : segmentQueue) {
                     AudioFile audioFile = new AudioFile(segment.getData(), "mp3", fragment.getSoundFragmentId());
                     audioFiles.add(audioFile);
@@ -164,17 +174,22 @@ public class PlaylistManager {
             }
         }
 
+        LOGGER.info("Returning " + audioFiles.size() + " audio files for brand: " + brand);
         return audioFiles;
     }
 
     private LiveSoundFragment getNextFragment(String brand) {
         PlaylistState state = playlistStates.get(brand);
         if (state == null) {
+            LOGGER.warn("getNextFragment: No state for brand: " + brand);
             return null;
         }
 
+        LOGGER.info("getNextFragment for brand: " + brand + ", prioritizedQueue: " + state.prioritizedQueue.size() + ", regularQueue: " + state.regularQueue.size());
+
         // Check prioritized queue first
         if (!state.prioritizedQueue.isEmpty()) {
+            LOGGER.info("Returning fragment from prioritizedQueue");
             LiveSoundFragment nextFragment = state.prioritizedQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
             return nextFragment;
@@ -182,10 +197,13 @@ public class PlaylistManager {
 
         // Then check regular queue
         if (!state.regularQueue.isEmpty()) {
+            LOGGER.info("Returning fragment from regularQueue");
             LiveSoundFragment nextFragment = state.regularQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
             return nextFragment;
         }
+        
+        LOGGER.warn("Both queues are empty for brand: " + brand);
 
         // If both queues are empty, try to feed more fragments or use waiting audio
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
@@ -193,8 +211,28 @@ public class PlaylistManager {
             return waitingAudioProvider.createWaitingFragment()
                 .await().indefinitely();
         } else {
-            feedFragments(brand, 1, true);
-            return null;
+            LOGGER.warn("Both queues empty for brand " + brand + ", creating emergency placeholder");
+            // Create emergency placeholder fragment with segments
+            LiveSoundFragment emergencyFragment = new LiveSoundFragment();
+            emergencyFragment.setSoundFragmentId(UUID.randomUUID());
+            emergencyFragment.setMetadata(new SongMetadata(emergencyFragment.getSoundFragmentId(), "Loading...", "Station"));
+            
+            Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = new HashMap<>();
+            long[] bitrates = {128000L, 64000L};
+            for (long bitrate : bitrates) {
+                ConcurrentLinkedQueue<HlsSegment> segmentQueue = new ConcurrentLinkedQueue<>();
+                for (int i = 0; i < 3; i++) {
+                    HlsSegment segment = new HlsSegment();
+                    segment.setSequence(i);
+                    segment.setDuration(6);
+                    segment.setData(new byte[1024]);
+                    segment.setSongMetadata(emergencyFragment.getMetadata());
+                    segmentQueue.offer(segment);
+                }
+                segments.put(bitrate, segmentQueue);
+            }
+            emergencyFragment.setSegments(segments);
+            return emergencyFragment;
         }
     }
 
@@ -253,8 +291,13 @@ public class PlaylistManager {
 
     public void initializeBrand(String brand) {
         playlistStates.computeIfAbsent(brand, k -> {
-            LOGGER.info("Initialized playlist for brand: " + brand);
-            return new PlaylistState();
+            LOGGER.info("Initializing playlist for brand: " + brand);
+            PlaylistState newState = new PlaylistState();
+            playlistStates.put(brand, newState);
+            // Immediately feed initial fragments
+            feedFragments(brand, REGULAR_BUFFER_MAX, false);
+            LOGGER.info("After initial feed, regularQueue size: " + newState.regularQueue.size());
+            return newState;
         });
     }
 

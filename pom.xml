@@ -94,7 +94,7 @@
             <version>${stripe.version}</version>
         </dependency>
 
-        <!-- Custom Dependency (existing) -->
+        <!-- Custom Dependency (2next) - now with transitive deps -->
         <dependency>
             <groupId>io.kneo</groupId>
             <artifactId>2next</artifactId>
@@ -102,14 +102,20 @@
             <scope>system</scope>
             <systemPath>${project.basedir}/lib/2next-1.2.0.jar</systemPath>
         </dependency>
-
         <!-- Vert.x Web -->
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web</artifactId>
             <version>4.5.8</version>
         </dependency>
-        
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-reactive-routes</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-qute</artifactId>
+        </dependency>
         <!-- Quarkus Vert.x -->
         <dependency>
             <groupId>io.quarkus</groupId>

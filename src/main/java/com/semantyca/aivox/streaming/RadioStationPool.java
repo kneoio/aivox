@@ -28,14 +28,19 @@ public class RadioStationPool {
     private final HlsConfig hlsConfig;
     private final RadioDJProcessor radioDJProcessor;
     private final WaitingAudioProvider waitingAudioProvider;
+    private final SegmentFeederTimer segmentFeederTimer;
+    private final SliderTimer sliderTimer;
 
     @Inject
     public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig, 
-                          RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider) {
+                          RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider,
+                          SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
+        this.segmentFeederTimer = segmentFeederTimer;
+        this.sliderTimer = sliderTimer;
     }
 
     @PostConstruct
@@ -74,7 +79,7 @@ public class RadioStationPool {
                         
                         // Create new instances for this brand
                         PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor, waitingAudioProvider);
-                        StreamManager streamManager = new StreamManager(playlistManager, hlsConfig);
+                        StreamManager streamManager = new StreamManager(playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
                         
                         RadioStationBundle newBundle = new RadioStationBundle(key, streamManager, playlistManager);
                         

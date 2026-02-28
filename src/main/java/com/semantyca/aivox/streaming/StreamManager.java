@@ -5,6 +5,7 @@ import com.semantyca.aivox.service.AudioFile;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
+import io.smallrye.mutiny.subscription.Cancellable;
 import org.jboss.logging.Logger;
 
 import java.time.ZoneId;
@@ -33,11 +34,18 @@ public class StreamManager {
     private final PlaylistManager playlistManager;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final HlsConfig hlsConfig;
+    private final SegmentFeederTimer segmentFeederTimer;
+    private final SliderTimer sliderTimer;
+
+    private final Map<String, Cancellable> timerSubscriptions = new ConcurrentHashMap<>();
 
     @Inject
-    public StreamManager(PlaylistManager playlistManager, HlsConfig hlsConfig) {
+    public StreamManager(PlaylistManager playlistManager, HlsConfig hlsConfig,
+                         SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer) {
         this.playlistManager = playlistManager;
         this.hlsConfig = hlsConfig;
+        this.segmentFeederTimer = segmentFeederTimer;
+        this.sliderTimer = sliderTimer;
     }
 
     private static final int PENDING_QUEUE_REFILL_THRESHOLD = 10;
@@ -60,12 +68,16 @@ public class StreamManager {
     public String generatePlaylist(String brand, Long bitrate) {
         StreamState state = streamStates.get(brand.toLowerCase());
         if (state == null) {
+            LOGGER.warn("No stream state for brand: " + brand);
             return getDefaultPlaylist();
         }
 
         if (state.liveSegments.isEmpty()) {
+            LOGGER.warn("liveSegments is EMPTY for brand: " + brand + ", pendingQueue size: " + state.pendingQueue.size());
             return getDefaultPlaylist();
         }
+        
+        LOGGER.info("Generating playlist for brand: " + brand + ", liveSegments: " + state.liveSegments.size() + ", pendingQueue: " + state.pendingQueue.size());
 
         final long targetBitrate = bitrate != null ? bitrate : 128000L;
         StringBuilder playlist = new StringBuilder();
@@ -166,6 +178,8 @@ public class StreamManager {
     }
 
     private void feedSegmentsForBrand(String brand, StreamState state) {
+        LOGGER.info("feedSegmentsForBrand called for " + brand + ", pendingQueue: " + state.pendingQueue.size() + ", liveSegments: " + state.liveSegments.size());
+        
         if (!state.pendingQueue.isEmpty()) {
             for (int i = 0; i < SEGMENTS_TO_DRIP_PER_FEED_CALL; i++) {
                 if (state.liveSegments.size() >= hlsConfig.getMaxVisibleSegments() * 2) {
@@ -176,14 +190,17 @@ public class StreamManager {
                 if (bitrateSlot != null) {
                     long seq = bitrateSlot.values().iterator().next().getSequence();
                     state.liveSegments.put(seq, bitrateSlot);
+                    LOGGER.info("Moved segment seq=" + seq + " from pending to live for brand: " + brand);
                 }
             }
         }
 
         if (state.pendingQueue.size() < PENDING_QUEUE_REFILL_THRESHOLD) {
+            LOGGER.info("Pending queue below threshold (" + state.pendingQueue.size() + " < " + PENDING_QUEUE_REFILL_THRESHOLD + "), fetching from PlaylistManager for brand: " + brand);
             try {
                 // Get next fragment from playlist manager
                 List<AudioFile> audioFiles = playlistManager.getNextAudioFiles(brand);
+                LOGGER.info("PlaylistManager returned " + (audioFiles != null ? audioFiles.size() : 0) + " audio files for brand: " + brand);
                 if (audioFiles != null && !audioFiles.isEmpty()) {
                     createSegmentsFromAudioFiles(brand, audioFiles, state);
                 }
@@ -196,6 +213,7 @@ public class StreamManager {
     private void createSegmentsFromAudioFiles(String brand, List<AudioFile> audioFiles, StreamState state) {
         // Simulate segment creation from audio files
         // In a real implementation, this would use AudioSegmentationService
+        LOGGER.info("Creating segments from " + audioFiles.size() + " audio files for brand: " + brand);
         for (AudioFile audioFile : audioFiles) {
             long seq = currentSequence.getAndIncrement();
             Map<Long, HlsSegment> bitrateSlot = new HashMap<>();
@@ -212,6 +230,7 @@ public class StreamManager {
             }
             
             state.pendingQueue.offer(bitrateSlot);
+            LOGGER.info("Added segment seq=" + seq + " to pendingQueue for brand: " + brand + ", new pendingQueue size: " + state.pendingQueue.size());
         }
     }
 
@@ -242,6 +261,22 @@ public class StreamManager {
             StreamState state = new StreamState();
             streamStates.put(brandKey, state);
             LOGGER.info("Initialized stream for brand: " + brand);
+
+            // Start timers for this stream
+            segmentFeederTimer.setDurationSec(hlsConfig.getSegmentDuration());
+
+            Cancellable feeder = segmentFeederTimer.getTicker().subscribe().with(
+                    timestamp -> executorService.submit(this::feedSegments),
+                    error -> LOGGER.error("Feeder subscription error for " + brand + ": " + error.getMessage(), error)
+            );
+
+            Cancellable slider = sliderTimer.getTicker().subscribe().with(
+                    timestamp -> executorService.submit(this::slideWindow),
+                    error -> LOGGER.error("Slider subscription error for " + brand + ": " + error.getMessage(), error)
+            );
+
+            timerSubscriptions.put(brandKey + "_feeder", feeder);
+            timerSubscriptions.put(brandKey + "_slider", slider);
         }
     }
 
@@ -249,6 +284,12 @@ public class StreamManager {
         String brandKey = brand.toLowerCase();
         StreamState state = streamStates.remove(brandKey);
         if (state != null) {
+            // Cancel timer subscriptions
+            Cancellable feeder = timerSubscriptions.remove(brandKey + "_feeder");
+            Cancellable slider = timerSubscriptions.remove(brandKey + "_slider");
+            if (feeder != null) feeder.cancel();
+            if (slider != null) slider.cancel();
+
             state.liveSegments.clear();
             state.pendingQueue.clear();
             LOGGER.info("Shutdown stream for brand: " + brand);
