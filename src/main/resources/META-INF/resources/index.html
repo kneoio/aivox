@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HLS Test Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        .row { margin: 12px 0; }
+        input[type="text"] { width: min(900px, 100%); padding: 8px; }
+        button { padding: 8px 12px; }
+        #status { white-space: pre-wrap; margin-top: 12px; }
+    </style>
+</head>
+<body>
+
+<h1>HLS Test Player</h1>
+
+<div class="row">
+    <label for="src">HLS URL (.m3u8):</label>
+</div>
+
+<div class="row">
+    <input id="src" type="text" spellcheck="false" />
+    <button id="load" type="button">Load</button>
+</div>
+
+<div class="row">
+    <audio id="audio" controls autoplay style="width: min(900px, 100%);"></audio>
+</div>
+
+<div id="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+    const audio = document.getElementById('audio');
+    const srcInput = document.getElementById('src');
+    const loadBtn = document.getElementById('load');
+    const statusEl = document.getElementById('status');
+
+    const params = new URLSearchParams(window.location.search);
+    const defaultSrc = params.get('src') || (window.location.origin + '/radio/stream.m3u8');
+    srcInput.value = defaultSrc;
+
+    let hls;
+
+    function setStatus(msg) {
+        statusEl.textContent = msg || '';
+    }
+
+    function load(src) {
+        setStatus('Loading: ' + src);
+
+        if (hls) {
+            hls.destroy();
+            hls = undefined;
+        }
+
+        if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+            audio.src = src;
+            audio.play().catch(() => {});
+            setStatus('Using native HLS support');
+            return;
+        }
+
+        if (window.Hls && window.Hls.isSupported()) {
+            hls = new Hls({ enableWorker: true });
+            hls.loadSource(src);
+            hls.attachMedia(audio);
+
+            hls.on(Hls.Events.ERROR, function (event, data) {
+                setStatus('Hls.js error: ' + data.type + ' / ' + data.details + (data.fatal ? ' (fatal)' : ''));
+            });
+
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                audio.play().catch(() => {});
+            });
+
+            setStatus('Using hls.js');
+            return;
+        }
+
+        setStatus('HLS is not supported in this browser');
+    }
+
+    loadBtn.addEventListener('click', () => load(srcInput.value));
+    load(defaultSrc);
+</script>
+</body>
+</html>

@@ -2,15 +2,11 @@ package com.semantyca.aivox.repository.soundfragment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semantyca.aivox.model.soundfragment.BrandSoundFragment;
-import com.semantyca.aivox.model.soundfragment.BrandSoundFragmentFlat;
 import com.semantyca.aivox.model.soundfragment.SoundFragment;
 import com.semantyca.aivox.model.soundfragment.SoundFragmentFilter;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
-import com.semantyca.mixpla.model.cnst.SourceType;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.repository.rls.RLSRepository;
-import io.kneo.officeframe.dto.GenreDTO;
-import io.kneo.officeframe.dto.LabelDTO;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.pgclient.PgPool;
@@ -34,83 +30,9 @@ public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstrac
         super(client, mapper, rlsRepository);
     }
 
-    public Uni<List<BrandSoundFragment>> findForBrandBySimilarity(UUID brandId, String keyword, final int limit, final int offset,
-                                                                  boolean includeArchived, IUser user) {
-        String sql = "SELECT t.*, bsf.played_by_brand_count, bsf.rated_by_brand_count, bsf.last_time_played_by_brand, " +
-                "similarity(t.search_name, $3) AS sim " +
-                "FROM " + entityData.getTableName() + " t " +
-                "JOIN kneobroadcaster__brand_sound_fragments bsf ON t.id = bsf.sound_fragment_id " +
-                "JOIN " + entityData.getRlsName() + " rls ON t.id = rls.entity_id " +
-                "WHERE bsf.brand_id = $1 AND rls.reader = $2";
-
-        if (!includeArchived) {
-            sql += " AND  t.archived = 0 ";
-        }
-
-        sql += " AND (t.search_name ILIKE '%' || $3 || '%' OR similarity(t.search_name, $3) > 0.05)";
-        sql += " ORDER BY sim DESC";
-
-        if (limit > 0) {
-            sql += String.format(" LIMIT %s OFFSET %s", limit, offset);
-        }
-
-        return client.preparedQuery(sql)
-                .execute(Tuple.of(brandId, user.getId(), keyword))
-                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
-                .onItem().transformToUni(row -> {
-                    Uni<SoundFragment> soundFragmentUni = from(row, true, false, true);
-                    return soundFragmentUni.onItem().transform(soundFragment -> {
-                        BrandSoundFragment brandSoundFragment = createBrandSoundFragment(row, brandId);
-                        brandSoundFragment.setSoundFragment(soundFragment);
-                        return brandSoundFragment;
-                    });
-                })
-                .concatenate()
-                .collect().asList();
-    }
-
-    public Uni<List<BrandSoundFragmentFlat>> findForBrandFlat(UUID brandId, final int limit, final int offset,
-                                                              IUser user, SoundFragmentFilter filter) {
-        String sql = "SELECT t.id, t.title, t.artist, t.album, t.source, " +
-                "bsf.played_by_brand_count, bsf.rated_by_brand_count, bsf.last_time_played_by_brand";
-        
-        if (filter != null && filter.getSearchTerm() != null && !filter.getSearchTerm().trim().isEmpty()) {
-            sql += ", similarity(t.search_name, $3) AS sim";
-        }
-        
-        sql += " FROM " + entityData.getTableName() + " t " +
-                "JOIN kneobroadcaster__brand_sound_fragments bsf ON t.id = bsf.sound_fragment_id " +
-                "JOIN " + entityData.getRlsName() + " rls ON t.id = rls.entity_id " +
-                "WHERE bsf.brand_id = $1 AND rls.reader = $2 AND t.archived = 0";
-
-        if (filter != null && filter.isActivated()) {
-            sql += buildFilterConditions(filter);
-        }
-
-        if (filter != null && filter.getSearchTerm() != null && !filter.getSearchTerm().trim().isEmpty()) {
-            sql += " ORDER BY sim DESC";
-        } else {
-            sql += " ORDER BY t.reg_date DESC";
-        }
-
-        if (limit > 0) {
-            sql += String.format(" LIMIT %s OFFSET %s", limit, offset);
-        }
-
-        Tuple params = (filter != null && filter.getSearchTerm() != null && !filter.getSearchTerm().trim().isEmpty())
-                ? Tuple.of(brandId, user.getId(), filter.getSearchTerm())
-                : Tuple.of(brandId, user.getId());
-
-        return client.preparedQuery(sql)
-                .execute(params)
-                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
-                .onItem().transformToUni(row -> createBrandSoundFragmentFlat(row, brandId))
-                .concatenate()
-                .collect().asList();
-    }
 
     public Uni<List<BrandSoundFragment>> findForBrand(UUID brandId, final int limit, final int offset,
-                                                      boolean includeArchived, IUser user, SoundFragmentFilter filter) {
+                                                      IUser user, SoundFragmentFilter filter) {
         String sql = "SELECT t.*, bsf.played_by_brand_count, bsf.rated_by_brand_count, bsf.last_time_played_by_brand";
         
         if (filter != null && filter.getSearchTerm() != null && !filter.getSearchTerm().trim().isEmpty()) {
@@ -120,11 +42,7 @@ public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstrac
         sql += " FROM " + entityData.getTableName() + " t " +
                 "JOIN kneobroadcaster__brand_sound_fragments bsf ON t.id = bsf.sound_fragment_id " +
                 "JOIN " + entityData.getRlsName() + " rls ON t.id = rls.entity_id " +
-                "WHERE bsf.brand_id = $1 AND rls.reader = $2";
-
-        if (!includeArchived) {
-            sql += " AND t.archived = 0";
-        }
+                "WHERE bsf.brand_id = $1 AND rls.reader = $2 AND t.archived = 0";
 
         if (filter != null && filter.isActivated()) {
             sql += buildFilterConditions(filter);
@@ -251,70 +169,6 @@ public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstrac
                 .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
                 .onItem().transformToUni(row -> from(row, true, true, true))
                 .concatenate()
-                .collect().asList();
-    }
-
-    private Uni<BrandSoundFragmentFlat> createBrandSoundFragmentFlat(Row row, UUID brandId) {
-        UUID soundFragmentId = row.getUUID("id");
-        
-        Uni<List<LabelDTO>> labelsUni = loadLabels(soundFragmentId);  //directly DTO
-        Uni<List<GenreDTO>> genresUni = loadGenres(soundFragmentId);  //directly DTO
-        
-        return Uni.combine().all().unis(labelsUni, genresUni).asTuple()
-                .onItem().transform(tuple -> {
-                    List<LabelDTO> labels = tuple.getItem1();
-                    List<GenreDTO> genres = tuple.getItem2();
-                    
-                    BrandSoundFragmentFlat flat = new BrandSoundFragmentFlat();
-                    flat.setId(soundFragmentId);
-                    flat.setDefaultBrandId(brandId);
-                    flat.setPlayedByBrandCount(row.getInteger("played_by_brand_count"));
-                    flat.setRatedByBrandCount(row.getInteger("rated_by_brand_count"));
-                    flat.setPlayedTime(row.getLocalDateTime("last_time_played_by_brand"));
-                    flat.setTitle(row.getString("title"));
-                    flat.setArtist(row.getString("artist"));
-                    flat.setAlbum(row.getString("album"));
-                    flat.setSource(SourceType.valueOf(row.getString("source")));
-                    flat.setLabels(labels);
-                    flat.setGenres(genres);
-                    return flat;
-                });
-    }
-
-    private Uni<List<LabelDTO>> loadLabels(UUID soundFragmentId) {
-        String sql = "SELECT l.id, l.identifier, l.color, l.font_color FROM __labels l " +
-                "JOIN kneobroadcaster__sound_fragment_labels sfl ON l.id = sfl.label_id " +
-                "WHERE sfl.id = $1 ORDER BY l.identifier";
-        return client.preparedQuery(sql)
-                .execute(Tuple.of(soundFragmentId))
-                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
-                .onItem().transform(row -> {
-                    LabelDTO dto = new LabelDTO();
-                    dto.setId(row.getUUID("id"));
-                    dto.setIdentifier(row.getString("identifier"));
-                    dto.setColor(row.getString("color"));
-                    dto.setFontColor(row.getString("font_color"));
-                    return dto;
-                })
-                .collect().asList();
-    }
-
-    private Uni<List<GenreDTO>> loadGenres(UUID soundFragmentId) {
-        String sql = "SELECT g.id, g.identifier, g.color, g.font_color, g.rank FROM __genres g " +
-                "JOIN kneobroadcaster__sound_fragment_genres sfg ON g.id = sfg.genre_id " +
-                "WHERE sfg.sound_fragment_id = $1 ORDER BY g.identifier";
-        return client.preparedQuery(sql)
-                .execute(Tuple.of(soundFragmentId))
-                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
-                .onItem().transform(row -> {
-                    GenreDTO dto = new GenreDTO();
-                    dto.setId(row.getUUID("id"));
-                    dto.setIdentifier(row.getString("identifier"));
-                    dto.setColor(row.getString("color"));
-                    dto.setFontColor(row.getString("font_color"));
-                    dto.setRank(row.getInteger("rank"));
-                    return dto;
-                })
                 .collect().asList();
     }
 
