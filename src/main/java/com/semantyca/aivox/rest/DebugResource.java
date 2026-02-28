@@ -36,82 +36,84 @@ public class DebugResource {
         String brand = rc.pathParam("brand").toLowerCase();
         
         streamingService.initializeStation(brand)
-            .onItem().transform(bundle -> {
-                Map<String, Object> response = new HashMap<>();
-                response.put("brand", brand);
-                response.put("status", "initialized");
-                response.put("active", bundle.isActive());
-                response.put("createdAt", bundle.getCreatedAt());
-                
-                rc.response()
-                    .putHeader("Content-Type", "application/json")
-                    .end(response.toString());
-                
-                LOGGER.info("Stream initialized for brand: " + brand);
-                return bundle;
-            })
-            .onFailure().invoke(failure -> {
-                LOGGER.error("Failed to create stream for brand: " + brand, failure);
-                rc.response()
-                    .setStatusCode(500)
-                    .putHeader("Content-Type", "application/json")
-                    .end("{\"error\": \"Failed to create stream: " + failure.getMessage() + "\"}");
-            })
-            .subscribe();
+            .subscribe()
+            .with(
+                bundle -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("brand", brand);
+                    response.put("status", "initialized");
+                    response.put("active", bundle.isActive());
+                    response.put("createdAt", bundle.getCreatedAt());
+                    
+                    rc.response()
+                        .putHeader("Content-Type", "application/json")
+                        .end(response.toString());
+                    
+                    LOGGER.info("Stream initialized for brand: " + brand);
+                },
+                failure -> {
+                    LOGGER.error("Failed to create stream for brand: " + brand, failure);
+                    rc.response()
+                        .setStatusCode(500)
+                        .putHeader("Content-Type", "application/json")
+                        .end("{\"error\": \"Failed to create stream: " + failure.getMessage() + "\"}");
+                }
+            );
     }
     
     private void stopStream(RoutingContext rc) {
         String brand = rc.pathParam("brand").toLowerCase();
         
         streamingService.stopStation(brand)
-            .onItem().transform(bundle -> {
-                Map<String, Object> response = new HashMap<>();
-                response.put("brand", brand);
-                response.put("status", "stopped");
-                
-                rc.response()
-                    .putHeader("Content-Type", "application/json")
-                    .end(response.toString());
-                
-                LOGGER.info("Stream stopped for brand: " + brand);
-                return bundle;
-            })
-            .onFailure().invoke(failure -> {
-                LOGGER.error("Failed to stop stream for brand: " + brand, failure);
-                rc.response()
-                    .setStatusCode(500)
-                    .putHeader("Content-Type", "application/json")
-                    .end("{\"error\": \"Failed to stop stream: " + failure.getMessage() + "\"}");
-            })
-            .subscribe();
+            .subscribe()
+            .with(
+                bundle -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("brand", brand);
+                    response.put("status", "stopped");
+                    
+                    rc.response()
+                        .putHeader("Content-Type", "application/json")
+                        .end(response.toString());
+                    
+                    LOGGER.info("Stream stopped for brand: " + brand);
+                },
+                failure -> {
+                    LOGGER.error("Failed to stop stream for brand: " + brand, failure);
+                    rc.response()
+                        .setStatusCode(500)
+                        .putHeader("Content-Type", "application/json")
+                        .end("{\"error\": \"Failed to stop stream: " + failure.getMessage() + "\"}");
+                }
+            );
     }
     
     private void listStreams(RoutingContext rc) {
         streamingService.getActiveStations()
-            .onItem().transform(stations -> {
-                Map<String, Object> response = new HashMap<>();
-                response.put("activeStations", stations.size());
-                
-                stations.forEach(bundle -> {
-                    Map<String, Object> stationInfo = new HashMap<>();
-                    stationInfo.put("brand", bundle.getBrand());
-                    stationInfo.put("active", bundle.isActive());
-                    stationInfo.put("createdAt", bundle.getCreatedAt());
-                });
-                
-                rc.response()
-                    .putHeader("Content-Type", "application/json")
-                    .end(response.toString());
-                
-                return stations;
-            })
-            .onFailure().invoke(failure -> {
-                LOGGER.error("Failed to list streams", failure);
-                rc.response()
-                    .setStatusCode(500)
-                    .putHeader("Content-Type", "application/json")
-                    .end("{\"error\": \"Failed to list streams: " + failure.getMessage() + "\"}");
-            })
-            .subscribe();
+            .subscribe()
+            .with(
+                stations -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("activeStations", stations.size());
+                    
+                    stations.forEach(bundle -> {
+                        Map<String, Object> stationInfo = new HashMap<>();
+                        stationInfo.put("brand", bundle.getBrand());
+                        stationInfo.put("active", bundle.isActive());
+                        stationInfo.put("createdAt", bundle.getCreatedAt());
+                    });
+                    
+                    rc.response()
+                        .putHeader("Content-Type", "application/json")
+                        .end(response.toString());
+                },
+                failure -> {
+                    LOGGER.error("Failed to list streams", failure);
+                    rc.response()
+                        .setStatusCode(500)
+                        .putHeader("Content-Type", "application/json")
+                        .end("{\"error\": \"Failed to list streams: " + failure.getMessage() + "\"}");
+                }
+            );
     }
 }

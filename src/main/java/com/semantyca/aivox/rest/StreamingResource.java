@@ -30,25 +30,20 @@ public class StreamingResource {
     private void getMasterPlaylist(RoutingContext rc) {
         String brand = rc.pathParam("brand").toLowerCase();
         
-        try {
-            streamingService.getMasterPlaylist(brand)
-                .onItem().transform(playlist -> {
+        streamingService.getMasterPlaylist(brand)
+            .subscribe()
+            .with(
+                playlist -> {
                     rc.response()
                         .putHeader("Content-Type", "application/vnd.apple.mpegurl")
                         .putHeader("Cache-Control", "no-cache")
                         .end(playlist);
-                    return playlist;
-                })
-                .onFailure().invoke(failure -> {
+                },
+                failure -> {
                     LOGGER.error("Failed to generate master playlist for brand: " + brand, failure);
                     rc.response().setStatusCode(404).end("Stream not found");
-                })
-                .subscribe();
-                
-        } catch (Exception e) {
-            LOGGER.error("Failed to generate master playlist for brand: " + brand, e);
-            rc.response().setStatusCode(404).end("Stream not found");
-        }
+                }
+            );
     }
     
     private void getPlaylist(RoutingContext rc) {
@@ -56,45 +51,40 @@ public class StreamingResource {
         Long bitrate = rc.request().getParam("bitrate") != null ? 
             Long.parseLong(rc.request().getParam("bitrate")) : null;
         
-        try {
-            streamingService.getStreamPlaylist(brand, bitrate)
-                .onItem().transform(playlist -> {
+        streamingService.getStreamPlaylist(brand, bitrate)
+            .subscribe()
+            .with(
+                playlist -> {
                     rc.response()
                         .putHeader("Content-Type", "application/vnd.apple.mpegurl")
                         .putHeader("Cache-Control", "no-cache")
                         .end(playlist);
-                    return playlist;
-                })
-                .onFailure().invoke(failure -> {
+                },
+                failure -> {
                     LOGGER.error("Failed to generate playlist for brand: " + brand + ", bitrate: " + bitrate, failure);
                     rc.response().setStatusCode(404).end("Stream not found");
-                })
-                .subscribe();
-                
-        } catch (Exception e) {
-            LOGGER.error("Failed to generate playlist for brand: " + brand + ", bitrate: " + bitrate, e);
-            rc.response().setStatusCode(404).end("Stream not found");
-        }
+                }
+            );
     }
     
     private void getSegment(RoutingContext rc) {
         String segmentFile = rc.pathParam("segmentFile");
         String brand = rc.pathParam("brand").toLowerCase();
         
-        try {
-            streamingService.getSegment(brand, segmentFile)
-                .onItem().transform(segmentData -> {
+        streamingService.getSegment(brand, segmentFile)
+            .subscribe()
+            .with(
+                segmentData -> {
                     if (segmentData == null) {
-                        throw new WebApplicationException(Response.Status.NOT_FOUND);
+                        rc.response().setStatusCode(404).end("Segment not found");
+                        return;
                     }
-                    
                     rc.response()
                         .putHeader("Content-Type", "video/MP2T")
                         .putHeader("Cache-Control", "no-cache")
                         .end(Buffer.buffer(segmentData));
-                    return segmentData;
-                })
-                .onFailure().invoke(failure -> {
+                },
+                failure -> {
                     LOGGER.error("Failed to get segment: " + segmentFile + " for brand: " + brand, failure);
                     if (failure instanceof WebApplicationException) {
                         WebApplicationException wae = (WebApplicationException) failure;
@@ -102,14 +92,7 @@ public class StreamingResource {
                     } else {
                         rc.response().setStatusCode(500).end("Error serving segment");
                     }
-                })
-                .subscribe();
-                
-        } catch (WebApplicationException e) {
-            rc.response().setStatusCode(e.getResponse().getStatus()).end("Segment not found");
-        } catch (Exception e) {
-            LOGGER.error("Failed to get segment: " + segmentFile + " for brand: " + brand, e);
-            rc.response().setStatusCode(500).end("Error serving segment");
-        }
+                }
+            );
     }
 }

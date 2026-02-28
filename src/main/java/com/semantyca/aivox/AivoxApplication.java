@@ -1,6 +1,5 @@
 package com.semantyca.aivox;
 
-import io.quarkus.runtime.StartupEvent;
 import io.vertx.ext.web.Router;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -18,7 +17,7 @@ public class AivoxApplication {
     @Inject
     DebugResource debugResource;
 
-    void setupRoutes(@Observes StartupEvent event, Router router) {
+    void setupRoutes(@Observes Router router) {
         streamingResource.setupRoutes(router);
         debugResource.setupRoutes(router);
     }
