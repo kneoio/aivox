@@ -73,14 +73,18 @@ public class StreamingResource {
         String segmentFile = rc.pathParam("segmentFile");
         String brand = rc.pathParam("brand").toLowerCase();
         
+        LOGGER.info("Segment request: brand=" + brand + ", file=" + segmentFile);
+        
         streamingService.getSegment(brand, segmentFile)
             .subscribe()
             .with(
                 segmentData -> {
                     if (segmentData == null) {
+                        LOGGER.warn("Segment data is NULL for: " + segmentFile);
                         rc.response().setStatusCode(404).end("Segment not found");
                         return;
                     }
+                    LOGGER.info("Serving segment: " + segmentFile + ", size: " + segmentData.length + " bytes");
                     rc.response()
                         .putHeader("Content-Type", "video/MP2T")
                         .putHeader("Cache-Control", "no-cache")

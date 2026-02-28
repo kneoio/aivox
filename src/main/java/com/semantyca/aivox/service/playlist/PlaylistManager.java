@@ -290,15 +290,16 @@ public class PlaylistManager {
     }
 
     public void initializeBrand(String brand) {
-        playlistStates.computeIfAbsent(brand, k -> {
+        PlaylistState state = playlistStates.computeIfAbsent(brand, k -> {
             LOGGER.info("Initializing playlist for brand: " + brand);
-            PlaylistState newState = new PlaylistState();
-            playlistStates.put(brand, newState);
-            // Immediately feed initial fragments
-            feedFragments(brand, REGULAR_BUFFER_MAX, false);
-            LOGGER.info("After initial feed, regularQueue size: " + newState.regularQueue.size());
-            return newState;
+            return new PlaylistState();
         });
+        
+        // Feed initial fragments after state is created
+        if (state.regularQueue.isEmpty() && state.prioritizedQueue.isEmpty()) {
+            feedFragments(brand, REGULAR_BUFFER_MAX, false);
+            LOGGER.info("After initial feed, regularQueue size: " + state.regularQueue.size());
+        }
     }
 
     public void shutdownBrand(String brand) {

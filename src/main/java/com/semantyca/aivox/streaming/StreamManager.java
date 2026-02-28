@@ -83,15 +83,10 @@ public class StreamManager {
         StringBuilder playlist = new StringBuilder();
         playlist.append("#EXTM3U\n")
                 .append("#EXT-X-VERSION:3\n")
-                .append("#EXT-X-ALLOW-CACHE:NO\n")
-                .append("#EXT-X-PLAYLIST-TYPE:EVENT\n")
                 .append("#EXT-X-TARGETDURATION:").append(hlsConfig.getSegmentDuration()).append("\n");
 
         long firstSequenceInWindow = state.liveSegments.firstKey();
         playlist.append("#EXT-X-MEDIA-SEQUENCE:").append(firstSequenceInWindow).append("\n");
-        playlist.append("#EXT-X-PROGRAM-DATE-TIME:")
-                .append(ZonedDateTime.now(ZONE_ID).format(DateTimeFormatter.ISO_INSTANT))
-                .append("\n");
 
         state.liveSegments.tailMap(firstSequenceInWindow).entrySet().stream()
                 .limit(hlsConfig.getMaxVisibleSegments())
@@ -107,7 +102,9 @@ public class StreamManager {
                                 .append(",")
                                 .append(segment.getSongMetadata() != null ? segment.getSongMetadata().toString() : "")
                                 .append("\n")
-                                .append("segments/")
+                                .append("/api/stream/")
+                                .append(brand.toLowerCase())
+                                .append("/segments/")
                                 .append(brand.toLowerCase())
                                 .append("_")
                                 .append(targetBitrate)
