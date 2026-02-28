@@ -63,7 +63,12 @@
         }
 
         if (window.Hls && window.Hls.isSupported()) {
-            hls = new Hls({ enableWorker: true });
+            hls = new Hls({
+                enableWorker: true,
+                xhrSetup: function(xhr, url) {
+                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                }
+            });
             hls.loadSource(src);
             hls.attachMedia(audio);
 

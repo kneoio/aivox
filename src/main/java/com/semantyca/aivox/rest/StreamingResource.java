@@ -37,6 +37,7 @@ public class StreamingResource {
                     rc.response()
                         .putHeader("Content-Type", "application/vnd.apple.mpegurl")
                         .putHeader("Cache-Control", "no-cache")
+                        .putHeader("Access-Control-Allow-Origin", "*")
                         .end(playlist);
                 },
                 failure -> {
@@ -58,6 +59,7 @@ public class StreamingResource {
                     rc.response()
                         .putHeader("Content-Type", "application/vnd.apple.mpegurl")
                         .putHeader("Cache-Control", "no-cache")
+                        .putHeader("Access-Control-Allow-Origin", "*")
                         .end(playlist);
                 },
                 failure -> {
@@ -82,6 +84,7 @@ public class StreamingResource {
                     rc.response()
                         .putHeader("Content-Type", "video/MP2T")
                         .putHeader("Cache-Control", "no-cache")
+                        .putHeader("Access-Control-Allow-Origin", "*")
                         .end(Buffer.buffer(segmentData));
                 },
                 failure -> {
