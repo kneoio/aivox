@@ -29,10 +29,7 @@ public class PlaylistManager {
     private static final int TRIGGER_SELF_MANAGING = 2;
     private static final int PROCESSED_QUEUE_MAX_SIZE = 2;
     private static final long STARVING_FEED_COOLDOWN_MILLIS = 20_000L;
-
     private final ReadWriteLock slicedFragmentsLock = new ReentrantReadWriteLock();
-
-    // Brand-specific playlist state
     private final Map<String, PlaylistState> playlistStates = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private volatile long lastStarvingFeedTime = 0;
@@ -48,10 +45,8 @@ public class PlaylistManager {
         this.hlsConfig = hlsConfig;
         this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
-        
-        // Initialize waiting audio
+
         waitingAudioProvider.initialize();
-        
         // Start self-managing scheduler
         scheduler.scheduleAtFixedRate(() -> {
             try {
