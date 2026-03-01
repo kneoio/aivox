@@ -91,4 +91,5 @@ public class StreamingService {
                 })
                 .onItem().transformToUni(uni -> uni);
     }
+
 }

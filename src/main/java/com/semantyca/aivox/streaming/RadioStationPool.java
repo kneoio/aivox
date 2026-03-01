@@ -2,14 +2,15 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
-import com.semantyca.aivox.repository.brand.BrandRepository;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
+import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.RadioDJProcessor;
+import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
-import io.smallrye.mutiny.Uni;
 import io.quarkus.runtime.Startup;
+import io.smallrye.mutiny.Uni;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -31,38 +32,35 @@ public class RadioStationPool {
 
     private final AivoxConfig aivoxConfig;
     private final HlsConfig hlsConfig;
-    private final RadioDJProcessor radioDJProcessor;
     private final WaitingAudioProvider waitingAudioProvider;
     private final SegmentFeederTimer segmentFeederTimer;
     private final SliderTimer sliderTimer;
-    private final SoundFragmentRepository soundFragmentRepository;
-    private final BrandRepository brandRepository;
+    private final SoundFragmentBrandService soundFragmentBrandService;
+    private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
 
     @Inject
-    public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig,
-                            RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider,
+    public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig, WaitingAudioProvider waitingAudioProvider,
                             SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer,
-                            SoundFragmentRepository soundFragmentRepository, BrandRepository brandRepository,
+                            SoundFragmentBrandService soundFragmentBrandService, BrandService brandService,
                             SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
-        this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
         this.segmentFeederTimer = segmentFeederTimer;
         this.sliderTimer = sliderTimer;
-        this.soundFragmentRepository = soundFragmentRepository;
-        this.brandRepository = brandRepository;
+        this.soundFragmentBrandService = soundFragmentBrandService;
+        this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
     }
 
     @PostConstruct
     void initStationsFromWhitelist() {
-        List<String> whitelist = aivoxConfig.getStationWhitelist().orElse(List.of());
+        List<String> whitelist = aivoxConfig.stationWhitelist().orElse(List.of());
         LOGGER.info("Initializing stations from whitelist: " + whitelist);
-        if (aivoxConfig.getStationWhitelist().isPresent()) {
+        if (aivoxConfig.stationWhitelist().isPresent()) {
             for (String brandName : whitelist) {
                 initializeStation(brandName)
                         .subscribe()
@@ -88,7 +86,8 @@ public class RadioStationPool {
 
                     pool.computeIfAbsent(brand, key -> {
                         LOGGER.info("Creating new bundle for brand: " + key);
-                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor, waitingAudioProvider, soundFragmentRepository, brandRepository, fileHandler, segmentationService);
+                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, waitingAudioProvider,
+                                soundFragmentBrandService, brandService, fileHandler, segmentationService);
                         StreamManager streamManager = new StreamManager(playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
                         streamManager.initializeStream(key);
                         return new RadioStationBundle(key, streamManager, playlistManager);
@@ -134,16 +133,4 @@ public class RadioStationPool {
     public Set<String> getActiveStationNames() {
         return new HashSet<>(pool.keySet());
     }
-
-    public boolean isStationActive(String brandName) {
-        RadioStationBundle bundle = pool.get(brandName);
-        return bundle != null && bundle.isActive();
-    }
-
-    public int getActiveStationCount() {
-        return (int) pool.values().stream()
-                .filter(RadioStationBundle::isActive)
-                .count();
-    }
-
 }

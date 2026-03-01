@@ -76,17 +76,20 @@ public class StreamManager {
             LOGGER.warn("liveSegments is EMPTY for brand: " + brand + ", pendingQueue size: " + state.pendingQueue.size());
             return getDefaultPlaylist();
         }
-        
-        LOGGER.info("Generating playlist for brand: " + brand + ", liveSegments: " + state.liveSegments.size() + ", pendingQueue: " + state.pendingQueue.size());
 
         final long targetBitrate = bitrate != null ? bitrate : 128000L;
         StringBuilder playlist = new StringBuilder();
         playlist.append("#EXTM3U\n")
                 .append("#EXT-X-VERSION:3\n")
+                .append("#EXT-X-ALLOW-CACHE:NO\n")
+                .append("#EXT-X-PLAYLIST-TYPE:EVENT\n")  // CRITICAL - DO NOT REMOVE
                 .append("#EXT-X-TARGETDURATION:").append(hlsConfig.getSegmentDuration()).append("\n");
 
         long firstSequenceInWindow = state.liveSegments.firstKey();
         playlist.append("#EXT-X-MEDIA-SEQUENCE:").append(firstSequenceInWindow).append("\n");
+        playlist.append("#EXT-X-PROGRAM-DATE-TIME:")
+                .append(ZonedDateTime.now(ZONE_ID).format(DateTimeFormatter.ISO_INSTANT))
+                .append("\n");
 
         state.liveSegments.tailMap(firstSequenceInWindow).entrySet().stream()
                 .limit(hlsConfig.getMaxVisibleSegments())
@@ -95,7 +98,7 @@ public class StreamManager {
                     HlsSegment segment = bitrateSlot.containsKey(targetBitrate)
                             ? bitrateSlot.get(targetBitrate)
                             : bitrateSlot.values().iterator().next();
-                    
+
                     if (segment != null) {
                         playlist.append("#EXTINF:")
                                 .append(segment.getDuration())

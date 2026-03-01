@@ -1,11 +1,10 @@
 package com.semantyca.aivox.service.playlist;
 
 import com.semantyca.aivox.config.AivoxConfig;
-import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.model.soundfragment.SoundFragment;
-import com.semantyca.aivox.repository.brand.BrandRepository;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
-import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
+import com.semantyca.aivox.service.BrandService;
+import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.streaming.HlsSegment;
 import com.semantyca.aivox.streaming.LiveSoundFragment;
@@ -13,11 +12,9 @@ import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.aivox.streaming.WaitingAudioProvider;
 import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
-import io.kneo.core.model.user.SuperUser;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.Dependent;
-import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.io.InputStream;
@@ -56,24 +53,21 @@ public class PlaylistManager {
     private volatile long lastStarvingFeedTime = 0;
     
     private final AivoxConfig aivoxConfig;
-    private final HlsConfig hlsConfig;
-    private final com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor;
     private final WaitingAudioProvider waitingAudioProvider;
-    private final SoundFragmentRepository soundFragmentRepository;
-    private final BrandRepository brandRepository;
+    private final SoundFragmentBrandService soundFragmentBrandService;
+    private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
     private final Map<String, UUID> brandIdCache = new ConcurrentHashMap<>();
-    private volatile boolean isWaitingStateActive = false;
 
-    @Inject
-    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider, SoundFragmentRepository soundFragmentRepository, BrandRepository brandRepository, SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService) {
+    public PlaylistManager(AivoxConfig aivoxConfig, WaitingAudioProvider waitingAudioProvider,
+                           SoundFragmentBrandService soundFragmentBrandService,
+                           BrandService brandService, SoundFragmentFileHandler fileHandler,
+                           AudioSegmentationService segmentationService) {
         this.aivoxConfig = aivoxConfig;
-        this.hlsConfig = hlsConfig;
-        this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
-        this.soundFragmentRepository = soundFragmentRepository;
-        this.brandRepository = brandRepository;
+        this.soundFragmentBrandService = soundFragmentBrandService;
+        this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
 
@@ -140,7 +134,7 @@ public class PlaylistManager {
             return;
         }
 
-        soundFragmentRepository.getBrandSongs(brandId, PlaylistItemType.SONG)
+        soundFragmentBrandService.getBrandSongs(brandId, PlaylistItemType.SONG)
                 .onItem().transformToMulti(soundFragments -> Multi.createFrom().iterable(soundFragments))
                 .onItem().transform(fragment -> {
                     // Filter out excluded IDs
@@ -171,16 +165,13 @@ public class PlaylistManager {
     }
 
     private UUID resolveBrandId(String brandSlug) {
-        // Check cache first
         UUID cachedId = brandIdCache.get(brandSlug);
         if (cachedId != null) {
             return cachedId;
         }
-
-        // Fetch from database
         try {
-            UUID brandId = brandRepository.getBySlugName(brandSlug, SuperUser.build(), false)
-                    .await().atMost(java.time.Duration.ofSeconds(5))
+            UUID brandId = brandService.getBySlugName(brandSlug)
+                    .await().atMost(Duration.ofSeconds(5))
                     .getId();
             brandIdCache.put(brandSlug, brandId);
             return brandId;
@@ -240,7 +231,7 @@ public class PlaylistManager {
             try {
                 // Create temp file
                 String extension = getFileExtension(metadata.getMimeType());
-                Path tempDir = java.nio.file.Paths.get(aivoxConfig.getPathTemp());
+                Path tempDir = java.nio.file.Paths.get(aivoxConfig.path().temp());
                 Files.createDirectories(tempDir);
                 Path tempFile = Files.createTempFile(tempDir, "audio_", extension);
 
@@ -311,7 +302,6 @@ public class PlaylistManager {
 
         // Check prioritized queue first
         if (!state.prioritizedQueue.isEmpty()) {
-            isWaitingStateActive = false;
             LOGGER.info("Returning fragment from prioritizedQueue");
             LiveSoundFragment nextFragment = state.prioritizedQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
@@ -320,7 +310,6 @@ public class PlaylistManager {
 
         // Then check regular queue
         if (!state.regularQueue.isEmpty()) {
-            isWaitingStateActive = false;
             LOGGER.info("Returning fragment from regularQueue");
             LiveSoundFragment nextFragment = state.regularQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
@@ -334,7 +323,6 @@ public class PlaylistManager {
         
         // Return waiting audio loop
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
-            isWaitingStateActive = true;
             LOGGER.debug("Returning waiting audio loop for brand: " + brand);
             return waitingAudioProvider.createWaitingFragment()
                 .await().atMost(java.time.Duration.ofSeconds(5));
@@ -402,13 +390,13 @@ public class PlaylistManager {
             LOGGER.info("Initializing playlist for brand: " + brand);
             return new PlaylistState();
         });
-
-        isWaitingStateActive = true;
-        LOGGER.info("Pre-populating queue with waiting audio for brand: " + brand);
-
         List<Uni<LiveSoundFragment>> unis = new ArrayList<>();
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             unis.add(waitingAudioProvider.createWaitingFragment());
+        }
+
+        if (unis.isEmpty()) {
+            return Uni.createFrom().voidItem();
         }
 
         return Uni.join().all(unis).andFailFast()

@@ -9,31 +9,45 @@ import java.util.Optional;
 
 @ConfigMapping(prefix = "aivox")
 public interface AivoxConfig {
-    
-    @WithName("host")
+
     @WithDefault("http://localhost:8080")
-    String getHost();
-    
-    @WithName("path.uploads")
-    @WithDefault("uploads")
-    String getPathUploads();
-    
-    @WithName("path.temp")
-    @WithDefault("temp")
-    String getPathTemp();
+    String host();
+
+    Path path();
+
+    Ffmpeg ffmpeg();
+
+    Ffprobe ffprobe();
+
+    Segmentation segmentation();
 
     @WithName("station.whitelist")
-    Optional<List<String>> getStationWhitelist();
-    
-    @WithName("ffmpeg.path")
-    @WithDefault("/usr/bin/ffmpeg")
-    String getFfmpegPath();
-    
-    @WithName("ffprobe.path")
-    @WithDefault("/usr/bin/ffprobe")
-    String getFfprobePath();
-    
-    @WithName("segmentation.output.dir")
-    @WithDefault("temp/segments")
-    String getSegmentationOutputDir();
+    Optional<List<String>> stationWhitelist();
+
+    interface Path {
+        @WithDefault("uploads")
+        String uploads();
+
+        @WithDefault("temp")
+        String temp();
+    }
+
+    interface Ffmpeg {
+        @WithDefault("/usr/bin/ffmpeg")
+        String path();
+    }
+
+    interface Ffprobe {
+        @WithDefault("/usr/bin/ffprobe")
+        String path();
+    }
+
+    interface Segmentation {
+        Output output();
+
+        interface Output {
+            @WithDefault("temp/segments")
+            String dir();
+        }
+    }
 }

@@ -50,12 +50,16 @@
         </dependency>
         
         <!-- Reactive Messaging (RabbitMQ) -->
-        <dependency>
+      <!--  <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-reactive-messaging-rabbitmq</artifactId>
             <version>${quarkus.platform.version}</version>
         </dependency>
-        
+-->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-messaging-rabbitmq</artifactId>
+        </dependency>
         <!-- Database -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -67,10 +71,15 @@
         </dependency>
         
         <!-- HTTP Client -->
-        <dependency>
+        <!--<dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-client-reactive</artifactId>
             <version>${quarkus.platform.version}</version>
+        </dependency>-->
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-client</artifactId>
         </dependency>
         
         <!-- Lombok -->

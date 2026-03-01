@@ -4,11 +4,28 @@
     <title>HLS Test Player</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: Arial, sans-serif; margin: 24px; }
-        .row { margin: 12px 0; }
-        input[type="text"] { width: min(900px, 100%); padding: 8px; }
-        button { padding: 8px 12px; }
-        #status { white-space: pre-wrap; margin-top: 12px; }
+        * { box-sizing: border-box; }
+        body { font-family: monospace; margin: 24px; background: #111; color: #eee; }
+        h1 { font-size: 1.2em; margin-bottom: 16px; color: #fff; }
+        .row { margin: 8px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        input[type="text"] { flex: 1; min-width: 300px; padding: 6px 8px; background: #222; color: #eee; border: 1px solid #444; font-family: monospace; }
+        button { padding: 6px 12px; background: #333; color: #eee; border: 1px solid #555; cursor: pointer; font-family: monospace; }
+        button:hover { background: #444; }
+        button.danger { border-color: #a33; }
+        button.danger:hover { background: #522; }
+        audio { width: 100%; max-width: 900px; margin: 8px 0; }
+        #log { margin-top: 16px; background: #000; border: 1px solid #333; padding: 10px; height: 320px; overflow-y: auto; font-size: 0.82em; line-height: 1.6; }
+        .log-info  { color: #8cf; }
+        .log-ok    { color: #4d4; }
+        .log-warn  { color: #fa0; }
+        .log-error { color: #f55; }
+        .log-event { color: #aaa; }
+        .ts { color: #555; margin-right: 6px; }
+        label { color: #aaa; white-space: nowrap; }
+        #statusDot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #555; margin-right: 6px; }
+        #statusDot.green  { background: #4d4; }
+        #statusDot.red    { background: #f55; }
+        #statusDot.yellow { background: #fa0; }
     </style>
 </head>
 <body>
@@ -16,239 +33,225 @@
 <h1>HLS Test Player</h1>
 
 <div class="row">
-    <label for="station">Station:</label>
+    <label>Station:</label>
     <select id="station">
         <option value="lumisonic">lumisonic</option>
     </select>
-    <button id="startStream" type="button">Start Stream</button>
-    <button id="stopStream" type="button">Stop Stream</button>
-</div>
-
-<div id="streamStatus"></div>
-
-<div class="row">
-    <label for="src">HLS URL (.m3u8):</label>
+    <button id="startStream">Start Stream</button>
+    <button id="stopStream" class="danger">Stop Stream</button>
+    <span id="streamStatus" style="color:#aaa;font-size:0.85em;"></span>
 </div>
 
 <div class="row">
+    <label>HLS URL:</label>
     <input id="src" type="text" spellcheck="false" />
-    <button id="load" type="button">Load</button>
+    <button id="loadBtn">&#9654; Load</button>
+    <button id="stopBtn" class="danger">&#9632; Stop</button>
 </div>
 
 <div class="row">
-    <audio id="audio" controls autoplay style="width: min(900px, 100%);"></audio>
+    <span id="statusDot"></span>
+    <span id="statusText" style="font-size:0.85em;color:#aaa;">idle</span>
 </div>
 
-<div id="status"></div>
+<audio id="audio" controls></audio>
+
+<div style="margin-top:8px;"><button id="copyLog">Copy Log</button></div>
+<div id="log"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
-    const audio = document.getElementById('audio');
-    const srcInput = document.getElementById('src');
-    const loadBtn = document.getElementById('load');
-    const statusEl = document.getElementById('status');
-    const stationSelect = document.getElementById('station');
-    const startStreamBtn = document.getElementById('startStream');
-    const stopStreamBtn = document.getElementById('stopStream');
-    const streamStatusEl = document.getElementById('streamStatus');
+    const audio      = document.getElementById('audio');
+    const srcInput   = document.getElementById('src');
+    const loadBtn    = document.getElementById('loadBtn');
+    const stopBtn    = document.getElementById('stopBtn');
+    const logEl      = document.getElementById('log');
+    const stationSel = document.getElementById('station');
+    const startBtn   = document.getElementById('startStream');
+    const stopSrvBtn = document.getElementById('stopStream');
+    const streamSt   = document.getElementById('streamStatus');
+    const statusDot  = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
 
     const params = new URLSearchParams(window.location.search);
-    const defaultSrc = params.get('src') || 'http://localhost:38798/api/stream/lumisonic/stream.m3u8';
-    srcInput.value = defaultSrc;
+    srcInput.value = params.get('src') || 'http://localhost:38798/api/stream/lumisonic/stream.m3u8';
 
-    function setStreamStatus(msg) {
-        streamStatusEl.textContent = msg || '';
+    // ── Logging ────────────────────────────────────────────────────────────────
+    function log(msg, type = 'info') {
+        const now = new Date();
+        const ts = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+        const line = document.createElement('div');
+        line.innerHTML = `<span class="ts">${ts}</span><span class="log-${type}">${escHtml(msg)}</span>`;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function setStatus(label, color) {
+        statusDot.className = color || '';
+        statusText.textContent = label;
     }
 
-    async function startStream() {
-        const brand = stationSelect.value;
-        setStreamStatus('Starting stream for ' + brand + '...');
-        
+    // ── Stream control (server-side) ───────────────────────────────────────────
+    async function serverAction(method) {
+        const brand = stationSel.value;
+        const action = method === 'POST' ? 'Starting' : 'Stopping';
+        streamSt.textContent = action + '...';
+        log(`${action} server stream [${brand}]`, 'info');
         try {
-            const response = await fetch('/api/debug/stream/' + brand, {
-                method: 'POST'
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                setStreamStatus('Stream started: ' + JSON.stringify(data));
-            } else {
-                const error = await response.text();
-                setStreamStatus('Error starting stream: ' + error);
-            }
-        } catch (err) {
-            setStreamStatus('Error: ' + err.message);
+            const r = await fetch('/api/debug/stream/' + brand, { method });
+            const text = await r.text();
+            streamSt.textContent = r.ok ? 'OK' : 'Error';
+            log(`Server response ${r.status}: ${text}`, r.ok ? 'ok' : 'error');
+        } catch (e) {
+            streamSt.textContent = 'Error';
+            log('Server action failed: ' + e.message, 'error');
         }
     }
+    startBtn.addEventListener('click', () => serverAction('POST'));
+    stopSrvBtn.addEventListener('click', () => serverAction('DELETE'));
 
-    async function stopStream() {
-        const brand = stationSelect.value;
-        setStreamStatus('Stopping stream for ' + brand + '...');
-        
-        try {
-            const response = await fetch('/api/debug/stream/' + brand, {
-                method: 'DELETE'
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                setStreamStatus('Stream stopped: ' + JSON.stringify(data));
-            } else {
-                const error = await response.text();
-                setStreamStatus('Error stopping stream: ' + error);
-            }
-        } catch (err) {
-            setStreamStatus('Error: ' + err.message);
-        }
+    // ── Player ─────────────────────────────────────────────────────────────────
+    let hls = null;
+    let hlsDestroyed = true;
+    let audioEventsAttached = false;
+
+    function stop() {
+        hlsDestroyed = true;
+        if (hls) { hls.destroy(); hls = null; log('hls.js destroyed', 'event'); }
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+        audioEventsAttached = false;
+        setStatus('stopped', '');
+        log('Stopped.', 'info');
     }
 
-    startStreamBtn.addEventListener('click', startStream);
-    stopStreamBtn.addEventListener('click', stopStream);
-
-    let hls;
-    let retryCount = 0;
-    let maxRetries = 10;
-    let retryDelay = 1000; // Start with 1 second
-    let isServerDown = false;
-
-    function setStatus(msg) {
-        statusEl.textContent = msg || '';
+    function bindAudioEvents() {
+        if (audioEventsAttached) return;
+        audioEventsAttached = true;
+        ['play','pause','playing','waiting','stalled','ended','error'].forEach(ev => {
+            audio.addEventListener(ev, () => {
+                log('audio: ' + ev, 'event');
+                if (ev === 'playing') setStatus('playing ▶', 'green');
+                if (ev === 'waiting' || ev === 'stalled') setStatus(ev + '…', 'yellow');
+                if (ev === 'error')   { log('audio.error code: ' + (audio.error ? audio.error.code : '?'), 'error'); setStatus('error', 'red'); }
+                if (ev === 'ended')   setStatus('ended', '');
+            });
+        });
     }
 
     function load(src) {
-        setStatus('Loading: ' + src);
-        retryCount = 0;
-        retryDelay = 1000;
-        isServerDown = false;
+        stop();
+        hlsDestroyed = false;
+        log('─── Load: ' + src, 'info');
+        log('hls.js supported: ' + (window.Hls ? Hls.isSupported() : 'hls.js not loaded'), 'info');
+        log('Native HLS: ' + !!audio.canPlayType('application/vnd.apple.mpegurl'), 'info');
+        setStatus('loading…', 'yellow');
 
-        if (hls) {
-            hls.destroy();
-            hls = undefined;
-        }
-
-        if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS — Safari only (Firefox falsely reports support)
+        const isRealNativeHls = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isRealNativeHls && audio.canPlayType('application/vnd.apple.mpegurl')) {
+            log('Using native HLS (Safari)', 'ok');
             audio.src = src;
-            audio.play().catch(() => {});
-            setStatus('Using native HLS support');
+            bindAudioEvents();
+            audio.play().catch(e => log('play() rejected: ' + e.message, 'warn'));
             return;
         }
 
-        if (window.Hls && window.Hls.isSupported()) {
-            hls = new Hls({
-                debug: true,
-                enableWorker: true,
-                manifestLoadingTimeOut: 10000,
-                manifestLoadingMaxRetry: 3,
-                manifestLoadingRetryDelay: 1000,
-                levelLoadingTimeOut: 10000,
-                levelLoadingMaxRetry: 4,
-                levelLoadingRetryDelay: 1000,
-                fragLoadingTimeOut: 20000,
-                fragLoadingMaxRetry: 6,
-                fragLoadingRetryDelay: 1000,
-                xhrSetup: function(xhr, url) {
-                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                }
-            });
-            hls.loadSource(src);
-            hls.attachMedia(audio);
-
-            hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
-                setStatus('Manifest parsed. Levels: ' + data.levels.length);
-                audio.play().catch(() => {});
-            });
-
-            hls.on(Hls.Events.LEVEL_LOADED, function (event, data) {
-                console.log('Level loaded:', data);
-            });
-
-            hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
-                console.log('Fragment loaded:', data.frag.url);
-            });
-
-            hls.on(Hls.Events.ERROR, function (event, data) {
-                const msg = 'Error: ' + data.type + ' / ' + data.details + 
-                    (data.fatal ? ' (FATAL)' : '') +
-                    (data.response ? '\nHTTP ' + data.response.code + ': ' + data.response.text : '') +
-                    (data.url ? '\nURL: ' + data.url : '');
-                setStatus(msg);
-                console.error('HLS error:', data);
-                
-                // Detect server downtime
-                if (data.response && (data.response.code === 0 || data.response.code >= 500)) {
-                    isServerDown = true;
-                } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR && 
-                          (data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR || 
-                           data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR)) {
-                    isServerDown = true;
-                }
-                
-                if (data.fatal) {
-                    switch(data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            if (isServerDown) {
-                                handleServerError();
-                            } else {
-                                setStatus(msg + '\n\nRetrying...');
-                                retryWithBackoff();
-                            }
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            setStatus(msg + '\n\nRecovering...');
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            setStatus(msg + '\n\nCannot recover');
-                            hls.destroy();
-                            break;
-                    }
-                }
-            });
-
-            setStatus('Using hls.js');
+        if (!window.Hls || !Hls.isSupported()) {
+            log('hls.js not supported — cannot play HLS', 'error');
+            setStatus('unsupported', 'red');
             return;
         }
 
-        function handleServerError() {
-            if (retryCount >= maxRetries) {
-                setStatus('Server appears to be down. Max retries reached. Stopping requests.\nClick "Load" to retry manually.');
-                hls.destroy();
-                return;
-            }
-            
-            const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
-            setStatus(`Server appears to be down. Retrying in ${Math.round(delay/1000)}s... (Attempt ${retryCount + 1}/${maxRetries})`);
-            
-            setTimeout(() => {
-                retryCount++;
-                setStatus('Retrying connection to server...');
-                hls.loadSource(srcInput.value);
-                hls.startLoad();
-            }, delay);
+        log('Using hls.js v' + Hls.version, 'info');
+
+        hls = new Hls({
+            enableWorker: true,
+            debug: false,
+            startPosition: -1,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 5,
+            maxBufferLength: 30,
+            manifestLoadingTimeOut: 10000,
+            manifestLoadingMaxRetry: 2,
+            manifestLoadingRetryDelay: 2000,
+            levelLoadingTimeOut: 10000,
+            levelLoadingMaxRetry: 2,
+            levelLoadingRetryDelay: 2000,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 3,
+            fragLoadingRetryDelay: 2000,
+        });
+
+        hls.on(Hls.Events.MANIFEST_LOADING,  (e, d) => log('Manifest loading: ' + d.url, 'event'));
+        hls.on(Hls.Events.MANIFEST_LOADED,   (e, d) => log('Manifest loaded', 'event'));
+        hls.on(Hls.Events.MANIFEST_PARSED,   (e, d) => {
+            log(`Manifest parsed — ${d.levels.length} level(s)`, 'ok');
+            setStatus('buffering…', 'yellow');
+            audio.play().catch(e => log('play() rejected: ' + e.message, 'warn'));
+        });
+        hls.on(Hls.Events.LEVEL_LOADED,      (e, d) => log(`Level ${d.level} loaded — ${d.details.fragments.length} frags, live=${d.details.live}`, 'event'));
+        hls.on(Hls.Events.FRAG_LOADING,      (e, d) => log('Frag loading: ' + d.frag.url, 'event'));
+        hls.on(Hls.Events.FRAG_LOADED,       (e, d) => {
+            const kb = (d.stats.loaded / 1024).toFixed(1);
+            const ms = d.stats.loading.end - d.stats.loading.start;
+            log(`Frag loaded [sn=${d.frag.sn}] ${kb} KB in ${ms}ms`, 'ok');
+        });
+
+        function destroyHls(reason) {
+            if (hlsDestroyed) return;
+            hlsDestroyed = true;
+            log('Destroying hls.js — ' + reason, 'error');
+            setStatus(reason, 'red');
+            if (hls) { hls.destroy(); hls = null; }
         }
 
-        function retryWithBackoff() {
-            if (retryCount >= maxRetries) {
-                setStatus('Max retries reached. Stopping.\nClick "Load" to retry manually.');
-                hls.destroy();
-                return;
-            }
-            
-            const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
-            setStatus(`Retrying in ${Math.round(delay/1000)}s... (Attempt ${retryCount + 1}/${maxRetries})`);
-            
-            setTimeout(() => {
-                retryCount++;
-                setStatus('Retrying...');
-                hls.startLoad();
-            }, delay);
-        }
+        hls.on(Hls.Events.ERROR, (e, data) => {
+            if (hlsDestroyed) return;
+            const fatal = data.fatal ? ' [FATAL]' : '';
+            const http  = data.response ? ` HTTP ${data.response.code}` : '';
+            const url   = data.url ? ` — ${data.url}` : '';
+            log(`${data.type} / ${data.details}${fatal}${http}${url}`, data.fatal ? 'error' : 'warn');
 
-        setStatus('HLS is not supported in this browser');
+            if (!data.fatal) return;
+
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                const code = data.response ? data.response.code : 0;
+                if (code === 404 || code === 403) {
+                    destroyHls('stream gone (' + code + ')');
+                    return;
+                }
+                log('Fatal network error → startLoad()', 'warn');
+                hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                log('Fatal media error → recoverMediaError()', 'warn');
+                hls.recoverMediaError();
+            } else {
+                log('Unrecoverable — destroying', 'error');
+                setStatus('error', 'red');
+                hls.destroy(); hls = null;
+            }
+        });
+
+        hls.loadSource(src);
+        hls.attachMedia(audio);
+        bindAudioEvents();
+        log('hls.js configured and loading source…', 'info');
     }
 
     loadBtn.addEventListener('click', () => load(srcInput.value));
-    load(defaultSrc);
+    stopBtn.addEventListener('click', stop);
+
+    document.getElementById('copyLog').addEventListener('click', () => {
+        const text = Array.from(logEl.querySelectorAll('div'))
+            .map(d => d.textContent).join('\n');
+        navigator.clipboard.writeText(text).then(() => log('Log copied to clipboard', 'ok'));
+    });
+
+    log('Player ready — hls.js ' + (window.Hls ? 'v' + Hls.version : 'NOT loaded'), 'info');
 </script>
 </body>
 </html>
