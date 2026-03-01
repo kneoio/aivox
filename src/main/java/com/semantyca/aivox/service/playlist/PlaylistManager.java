@@ -2,17 +2,38 @@ package com.semantyca.aivox.service.playlist;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
-import com.semantyca.aivox.service.AudioFile;
+import com.semantyca.aivox.model.soundfragment.SoundFragment;
+import com.semantyca.aivox.repository.brand.BrandRepository;
+import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
+import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
+import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.streaming.HlsSegment;
 import com.semantyca.aivox.streaming.LiveSoundFragment;
 import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.aivox.streaming.WaitingAudioProvider;
+import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import io.kneo.core.model.user.SuperUser;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.util.*;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.PriorityQueue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
@@ -38,13 +59,23 @@ public class PlaylistManager {
     private final HlsConfig hlsConfig;
     private final com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor;
     private final WaitingAudioProvider waitingAudioProvider;
+    private final SoundFragmentRepository soundFragmentRepository;
+    private final BrandRepository brandRepository;
+    private final SoundFragmentFileHandler fileHandler;
+    private final AudioSegmentationService segmentationService;
+    private final Map<String, UUID> brandIdCache = new ConcurrentHashMap<>();
+    private volatile boolean isWaitingStateActive = false;
 
     @Inject
-    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider) {
+    public PlaylistManager(AivoxConfig aivoxConfig, HlsConfig hlsConfig, com.semantyca.aivox.service.RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider, SoundFragmentRepository soundFragmentRepository, BrandRepository brandRepository, SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
+        this.soundFragmentRepository = soundFragmentRepository;
+        this.brandRepository = brandRepository;
+        this.fileHandler = fileHandler;
+        this.segmentationService = segmentationService;
 
         waitingAudioProvider.initialize();
         // Start self-managing scheduler
@@ -89,59 +120,174 @@ public class PlaylistManager {
         }
 
         int quantityToFetch = Math.min(remaining, maxQuantity);
-        LOGGER.info("Adding " + quantityToFetch + " fragments for brand " + brand);
+        LOGGER.info("Feeding " + quantityToFetch + " fragments for brand " + brand);
 
-        // Create placeholder fragments synchronously for immediate availability
-        for (int i = 0; i < quantityToFetch; i++) {
-            LiveSoundFragment fragment = createPlaceholderFragmentSync(brand);
-            if (fragment != null) {
-                state.regularQueue.offer(fragment);
-                LOGGER.info("Added placeholder fragment to regular queue for brand: " + brand);
-            }
+        // Get excluded IDs from current queues
+        List<UUID> excludedIds = new ArrayList<>();
+        state.regularQueue.forEach(f -> excludedIds.add(f.getSoundFragmentId()));
+        state.prioritizedQueue.forEach(f -> excludedIds.add(f.getSoundFragmentId()));
+        slicedFragmentsLock.readLock().lock();
+        try {
+            state.obtainedByHlsPlaylist.forEach(f -> excludedIds.add(f.getSoundFragmentId()));
+        } finally {
+            slicedFragmentsLock.readLock().unlock();
+        }
+
+        // Fetch songs from database like legacy
+        UUID brandId = resolveBrandId(brand);
+        if (brandId == null) {
+            LOGGER.warn("Cannot resolve brand ID for: " + brand);
+            return;
+        }
+
+        soundFragmentRepository.getBrandSongs(brandId, PlaylistItemType.SONG)
+                .onItem().transformToMulti(soundFragments -> Multi.createFrom().iterable(soundFragments))
+                .onItem().transform(fragment -> {
+                    // Filter out excluded IDs
+                    if (excludedIds.contains(fragment.getId())) {
+                        return null;
+                    }
+                    return fragment;
+                })
+                .filter(Objects::nonNull)
+                .select().first(quantityToFetch)
+                .onItem().call(fragment -> {
+                    try {
+                        return addFragmentToQueue(brand, fragment);
+                    } catch (Exception e) {
+                        LOGGER.warn("Skipping fragment due to error: " + e.getMessage());
+                        return Uni.createFrom().item(false);
+                    }
+                })
+                .collect().asList()
+                .subscribe().with(
+                        processedItems -> {
+                            LOGGER.info("Successfully processed and added " + processedItems.size() + " fragments for brand " + brand);
+                        },
+                        error -> {
+                            LOGGER.error("Error during the processing of fragments for brand " + brand + ": " + error.getMessage(), error);
+                        }
+                );
+    }
+
+    private UUID resolveBrandId(String brandSlug) {
+        // Check cache first
+        UUID cachedId = brandIdCache.get(brandSlug);
+        if (cachedId != null) {
+            return cachedId;
+        }
+
+        // Fetch from database
+        try {
+            UUID brandId = brandRepository.getBySlugName(brandSlug, SuperUser.build(), false)
+                    .await().atMost(java.time.Duration.ofSeconds(5))
+                    .getId();
+            brandIdCache.put(brandSlug, brandId);
+            return brandId;
+        } catch (Exception e) {
+            LOGGER.error("Failed to resolve brand ID for: " + brandSlug + ", error: " + e.getMessage());
+            return null;
         }
     }
 
-    private LiveSoundFragment createPlaceholderFragmentSync(String brand) {
-        if (waitingAudioProvider.isWaitingAudioAvailable()) {
-            LOGGER.debug("Using waiting audio for brand: " + brand);
-            return waitingAudioProvider.createWaitingFragment()
-                .await().atMost(java.time.Duration.ofSeconds(5));
-        } else {
-            // Fallback to creating a simple placeholder
-            LOGGER.warn("Waiting audio not available, using simple placeholder for brand: " + brand);
-            LiveSoundFragment fragment = new LiveSoundFragment();
-            fragment.setSoundFragmentId(UUID.randomUUID());
-            fragment.setMetadata(new SongMetadata(fragment.getSoundFragmentId(), "Placeholder Song", "Placeholder Artist"));
-            
-            // Create placeholder segments
-            Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = new HashMap<>();
+    private Uni<Boolean> addFragmentToQueue(String brand, SoundFragment soundFragment) {
+        PlaylistState state = playlistStates.get(brand);
+        if (state == null) {
+            return Uni.createFrom().item(false);
+        }
+
+        LiveSoundFragment liveSoundFragment = new LiveSoundFragment();
+        SongMetadata songMetadata = new SongMetadata(soundFragment.getId(), soundFragment.getTitle(), soundFragment.getArtist());
+        liveSoundFragment.setSoundFragmentId(soundFragment.getId());
+        liveSoundFragment.setMetadata(songMetadata);
+
+        // Materialize file from storage and create HLS segments using FFmpeg
+        return fileHandler.getFirstFile(soundFragment.getId())
+                .onFailure().recoverWithUni(ex -> {
+                    LOGGER.warn("Failed to retrieve file for fragment " + soundFragment.getId() + ": " + ex.getMessage());
+                    return Uni.createFrom().item((FileMetadata) null);
+                })
+                .onItem().transformToUni(fileMetadata -> {
+                    if (fileMetadata == null) {
+                        LOGGER.warn("No file found for fragment: " + soundFragment.getId());
+                        return Uni.createFrom().item(false);
+                    }
+
+                    return materializeAndSegment(fileMetadata, songMetadata)
+                            .onItem().transformToUni(segments -> {
+                                if (segments.isEmpty()) {
+                                    LOGGER.warn("No segments created for fragment: " + soundFragment.getId());
+                                    return Uni.createFrom().item(false);
+                                }
+
+                                liveSoundFragment.setSegments(segments);
+                                state.regularQueue.add(liveSoundFragment);
+                                LOGGER.info("Added fragment from database for brand " + brand + ": " + soundFragment.getTitle());
+                                return Uni.createFrom().item(true);
+                            });
+                });
+    }
+
+    private Uni<Map<Long, ConcurrentLinkedQueue<HlsSegment>>> materializeAndSegment(FileMetadata metadata, SongMetadata songMetadata) {
+        // Materialize file to temp directory
+       InputStream inputStream = metadata.getInputStream();
+        if (inputStream == null) {
+            LOGGER.warn("No input stream in file metadata: " + metadata.getFileOriginalName());
+            return Uni.createFrom().item(new HashMap<>());
+        }
+
+        return Uni.createFrom().item(() -> {
+            try {
+                // Create temp file
+                String extension = getFileExtension(metadata.getMimeType());
+                Path tempDir = java.nio.file.Paths.get(aivoxConfig.getPathTemp());
+                Files.createDirectories(tempDir);
+                Path tempFile = Files.createTempFile(tempDir, "audio_", extension);
+
+                // Write stream to temp file
+                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                inputStream.close();
+
+                LOGGER.debug("Materialized audio file to: " + tempFile);
+                return tempFile;
+            } catch (Exception e) {
+                LOGGER.error("Failed to materialize file: " + metadata.getFileOriginalName(), e);
+                throw new RuntimeException(e);
+            }
+        })
+        .chain(tempFile -> {
+            // Use FFmpeg to create proper HLS segments
             long[] bitrates = {128000L, 64000L};
-            
-            for (long bitrate : bitrates) {
-                ConcurrentLinkedQueue<HlsSegment> segmentQueue = new ConcurrentLinkedQueue<>();
-                // Create a few placeholder segments
-                for (int i = 0; i < 3; i++) {
-                    HlsSegment segment = new HlsSegment();
-                    segment.setSequence(i);
-                    segment.setDuration(6); // 6 seconds
-                    segment.setData(new byte[1024]); // Placeholder data
-                    segment.setSongMetadata(fragment.getMetadata());
-                    segmentQueue.offer(segment);
-                }
-                segments.put(bitrate, segmentQueue);
-            }
-            
-            fragment.setSegments(segments);
-            return fragment;
+            return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
+                    .onItem().invoke(() -> {
+                        // Clean up temp file after segmentation
+                        try {
+                            Files.deleteIfExists(tempFile);
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed to delete temp file: " + tempFile, e);
+                        }
+                    });
+        });
+    }
+    
+    private String getFileExtension(String mimeType) {
+        if (mimeType == null) {
+            return ".tmp";
         }
+        return switch (mimeType.toLowerCase()) {
+            case "audio/mpeg", "audio/mp3" -> ".mp3";
+            case "audio/wav", "audio/wave", "audio/vnd.wave" -> ".wav";
+            case "audio/flac", "audio/x-flac" -> ".flac";
+            case "audio/aac" -> ".aac";
+            case "audio/ogg" -> ".ogg";
+            case "audio/m4a" -> ".m4a";
+            default -> ".tmp";
+        };
     }
 
-    private Uni<LiveSoundFragment> createPlaceholderFragment(String brand) {
-        return Uni.createFrom().item(() -> createPlaceholderFragmentSync(brand));
-    }
 
-    public List<AudioFile> getNextAudioFiles(String brand) {
-        LOGGER.info("getNextAudioFiles called for brand: " + brand);
+    public LiveSoundFragment getNextLiveFragment(String brand) {
+        LOGGER.info("getNextLiveFragment called for brand: " + brand);
         PlaylistState state = playlistStates.get(brand);
         if (state == null) {
             LOGGER.warn("No playlist state found for brand: " + brand + ", creating new state");
@@ -151,31 +297,7 @@ public class PlaylistManager {
 
         LiveSoundFragment fragment = getNextFragment(brand);
         LOGGER.info("getNextFragment returned: " + (fragment != null ? "fragment with ID " + fragment.getSoundFragmentId() : "NULL"));
-        if (fragment == null) {
-            return Collections.emptyList();
-        }
-
-        // Convert LiveSoundFragment to AudioFile
-        List<AudioFile> audioFiles = new ArrayList<>();
-        Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = fragment.getSegments();
-        LOGGER.info("Fragment has " + (segments != null ? segments.size() : 0) + " bitrate variants");
-        
-        if (segments != null && !segments.isEmpty()) {
-            // Get the highest bitrate segments
-            long maxBitrate = segments.keySet().stream().max(Long::compare).orElse(128000L);
-            ConcurrentLinkedQueue<HlsSegment> segmentQueue = segments.get(maxBitrate);
-            
-            if (segmentQueue != null) {
-                LOGGER.info("SegmentQueue for bitrate " + maxBitrate + " has " + segmentQueue.size() + " segments");
-                for (HlsSegment segment : segmentQueue) {
-                    AudioFile audioFile = new AudioFile(segment.getData(), "mp3", fragment.getSoundFragmentId());
-                    audioFiles.add(audioFile);
-                }
-            }
-        }
-
-        LOGGER.info("Returning " + audioFiles.size() + " audio files for brand: " + brand);
-        return audioFiles;
+        return fragment;
     }
 
     private LiveSoundFragment getNextFragment(String brand) {
@@ -189,6 +311,7 @@ public class PlaylistManager {
 
         // Check prioritized queue first
         if (!state.prioritizedQueue.isEmpty()) {
+            isWaitingStateActive = false;
             LOGGER.info("Returning fragment from prioritizedQueue");
             LiveSoundFragment nextFragment = state.prioritizedQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
@@ -197,42 +320,27 @@ public class PlaylistManager {
 
         // Then check regular queue
         if (!state.regularQueue.isEmpty()) {
+            isWaitingStateActive = false;
             LOGGER.info("Returning fragment from regularQueue");
             LiveSoundFragment nextFragment = state.regularQueue.poll();
             moveFragmentToProcessedList(brand, nextFragment);
             return nextFragment;
         }
         
-        LOGGER.warn("Both queues are empty for brand: " + brand);
+        LOGGER.warn("Both queues are empty for brand: " + brand + ", activating waiting state");
 
-        // If both queues are empty, try to feed more fragments or use waiting audio
+        // Trigger feeding for next cycle
+        feedFragments(brand, 1, true);
+        
+        // Return waiting audio loop
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
-            LOGGER.debug("Both queues empty for brand " + brand + ", using waiting audio");
+            isWaitingStateActive = true;
+            LOGGER.debug("Returning waiting audio loop for brand: " + brand);
             return waitingAudioProvider.createWaitingFragment()
-                .await().indefinitely();
+                .await().atMost(java.time.Duration.ofSeconds(5));
         } else {
-            LOGGER.warn("Both queues empty for brand " + brand + ", creating emergency placeholder");
-            // Create emergency placeholder fragment with segments
-            LiveSoundFragment emergencyFragment = new LiveSoundFragment();
-            emergencyFragment.setSoundFragmentId(UUID.randomUUID());
-            emergencyFragment.setMetadata(new SongMetadata(emergencyFragment.getSoundFragmentId(), "Loading...", "Station"));
-            
-            Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = new HashMap<>();
-            long[] bitrates = {128000L, 64000L};
-            for (long bitrate : bitrates) {
-                ConcurrentLinkedQueue<HlsSegment> segmentQueue = new ConcurrentLinkedQueue<>();
-                for (int i = 0; i < 3; i++) {
-                    HlsSegment segment = new HlsSegment();
-                    segment.setSequence(i);
-                    segment.setDuration(6);
-                    segment.setData(new byte[1024]);
-                    segment.setSongMetadata(emergencyFragment.getMetadata());
-                    segmentQueue.offer(segment);
-                }
-                segments.put(bitrate, segmentQueue);
-            }
-            emergencyFragment.setSegments(segments);
-            return emergencyFragment;
+            LOGGER.error("Waiting audio not available for brand: " + brand);
+            return null;
         }
     }
 
@@ -289,17 +397,30 @@ public class PlaylistManager {
         }
     }
 
-    public void initializeBrand(String brand) {
+    public Uni<Void> initializeBrand(String brand) {
         PlaylistState state = playlistStates.computeIfAbsent(brand, k -> {
             LOGGER.info("Initializing playlist for brand: " + brand);
             return new PlaylistState();
         });
-        
-        // Feed initial fragments after state is created
-        if (state.regularQueue.isEmpty() && state.prioritizedQueue.isEmpty()) {
-            feedFragments(brand, REGULAR_BUFFER_MAX, false);
-            LOGGER.info("After initial feed, regularQueue size: " + state.regularQueue.size());
+
+        isWaitingStateActive = true;
+        LOGGER.info("Pre-populating queue with waiting audio for brand: " + brand);
+
+        List<Uni<LiveSoundFragment>> unis = new ArrayList<>();
+        if (waitingAudioProvider.isWaitingAudioAvailable()) {
+            unis.add(waitingAudioProvider.createWaitingFragment());
         }
+
+        return Uni.join().all(unis).andFailFast()
+                .onItem().invoke(fragments -> {
+                    fragments.forEach(fragment -> {
+                        if (fragment != null) {
+                            state.regularQueue.offer(fragment);
+                        }
+                    });
+                    LOGGER.info("Brand " + brand + " initialized with " + state.regularQueue.size() + " waiting audio fragments. Station ready to stream.");
+                })
+                .replaceWithVoid();
     }
 
     public void shutdownBrand(String brand) {

@@ -195,11 +195,13 @@ public class StreamManager {
         if (state.pendingQueue.size() < PENDING_QUEUE_REFILL_THRESHOLD) {
             LOGGER.info("Pending queue below threshold (" + state.pendingQueue.size() + " < " + PENDING_QUEUE_REFILL_THRESHOLD + "), fetching from PlaylistManager for brand: " + brand);
             try {
-                // Get next fragment from playlist manager
-                List<AudioFile> audioFiles = playlistManager.getNextAudioFiles(brand);
-                LOGGER.info("PlaylistManager returned " + (audioFiles != null ? audioFiles.size() : 0) + " audio files for brand: " + brand);
-                if (audioFiles != null && !audioFiles.isEmpty()) {
-                    createSegmentsFromAudioFiles(brand, audioFiles, state);
+                // Get next fragment from playlist manager with real HLS segments
+                LiveSoundFragment fragment = playlistManager.getNextLiveFragment(brand);
+                if (fragment != null) {
+                    LOGGER.info("PlaylistManager returned fragment with ID: " + fragment.getSoundFragmentId());
+                    addFragmentToPendingQueue(fragment, state);
+                } else {
+                    LOGGER.warn("PlaylistManager returned null fragment for brand: " + brand);
                 }
             } catch (Exception e) {
                 LOGGER.error("Error feeding segments for brand " + brand + ": " + e.getMessage(), e);
@@ -207,27 +209,44 @@ public class StreamManager {
         }
     }
 
-    private void createSegmentsFromAudioFiles(String brand, List<AudioFile> audioFiles, StreamState state) {
-        // Simulate segment creation from audio files
-        // In a real implementation, this would use AudioSegmentationService
-        LOGGER.info("Creating segments from " + audioFiles.size() + " audio files for brand: " + brand);
-        for (AudioFile audioFile : audioFiles) {
-            long seq = currentSequence.getAndIncrement();
+    private void addFragmentToPendingQueue(LiveSoundFragment fragment, StreamState state) {
+        Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = fragment.getSegments();
+        if (segments == null || segments.isEmpty()) {
+            LOGGER.warn("Fragment has no segments: " + fragment.getSoundFragmentId());
+            return;
+        }
+
+        LOGGER.info("Adding fragment " + fragment.getSoundFragmentId() + " with " + segments.size() + " bitrate variants to pending queue");
+
+        // Get the first bitrate to determine how many segments we have
+        ConcurrentLinkedQueue<HlsSegment> firstBitrateQueue = segments.values().iterator().next();
+        int segmentCount = firstBitrateQueue.size();
+
+        LOGGER.info("Fragment has " + segmentCount + " segments per bitrate");
+
+        // Convert from Map<Bitrate, Queue<Segment>> to Queue<Map<Bitrate, Segment>>
+        // This reorganizes segments so each queue entry has all bitrates for one segment
+        for (int i = 0; i < segmentCount; i++) {
+            long globalSeq = currentSequence.getAndIncrement();
             Map<Long, HlsSegment> bitrateSlot = new HashMap<>();
-            
-            // Create segments for different bitrates
-            long[] bitrates = {128000L, 64000L}; // High and low quality
-            for (long bitrate : bitrates) {
-                HlsSegment segment = new HlsSegment();
-                segment.setSequence(seq);
-                segment.setDuration(hlsConfig.getSegmentDuration());
-                segment.setData(audioFile.getData()); // In real implementation, this would be segmented audio
-                segment.setSongMetadata(new SongMetadata(audioFile.getSongId(), "Generated Song", "Generated Artist"));
-                bitrateSlot.put(bitrate, segment);
+
+            for (Map.Entry<Long, ConcurrentLinkedQueue<HlsSegment>> entry : segments.entrySet()) {
+                Long bitrate = entry.getKey();
+                ConcurrentLinkedQueue<HlsSegment> queue = entry.getValue();
+
+                HlsSegment segment = queue.poll();
+                if (segment != null) {
+                    // Update sequence number to be globally unique
+                    segment.setSequence(globalSeq);
+                    bitrateSlot.put(bitrate, segment);
+                }
             }
-            
-            state.pendingQueue.offer(bitrateSlot);
-            LOGGER.info("Added segment seq=" + seq + " to pendingQueue for brand: " + brand + ", new pendingQueue size: " + state.pendingQueue.size());
+
+            if (!bitrateSlot.isEmpty()) {
+                state.pendingQueue.offer(bitrateSlot);
+                long seq = bitrateSlot.values().iterator().next().getSequence();
+                LOGGER.info("Added segment seq=" + seq + " to pendingQueue, new size: " + state.pendingQueue.size());
+            }
         }
     }
 
@@ -254,12 +273,10 @@ public class StreamManager {
 
     public void initializeStream(String brand) {
         String brandKey = brand.toLowerCase();
-        if (!streamStates.containsKey(brandKey)) {
+        streamStates.computeIfAbsent(brandKey, k -> {
             StreamState state = new StreamState();
-            streamStates.put(brandKey, state);
             LOGGER.info("Initialized stream for brand: " + brand);
 
-            // Start timers for this stream
             segmentFeederTimer.setDurationSec(hlsConfig.getSegmentDuration());
 
             Cancellable feeder = segmentFeederTimer.getTicker().subscribe().with(
@@ -274,7 +291,9 @@ public class StreamManager {
 
             timerSubscriptions.put(brandKey + "_feeder", feeder);
             timerSubscriptions.put(brandKey + "_slider", slider);
-        }
+
+            return state;
+        });
     }
 
     public void shutdownStream(String brand) {

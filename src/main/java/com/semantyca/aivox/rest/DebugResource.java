@@ -1,5 +1,6 @@
 package com.semantyca.aivox.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semantyca.aivox.service.StreamingService;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
@@ -15,6 +16,7 @@ import java.util.Map;
 public class DebugResource {
     
     private static final Logger LOGGER = Logger.getLogger(DebugResource.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     
     @Inject
     StreamingService streamingService;
@@ -45,9 +47,18 @@ public class DebugResource {
                     response.put("active", bundle.isActive());
                     response.put("createdAt", bundle.getCreatedAt());
                     
-                    rc.response()
-                        .putHeader("Content-Type", "application/json")
-                        .end(response.toString());
+                    try {
+                        String jsonResponse = objectMapper.writeValueAsString(response);
+                        rc.response()
+                            .putHeader("Content-Type", "application/json")
+                            .end(jsonResponse);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to serialize JSON response", e);
+                        rc.response()
+                            .setStatusCode(500)
+                            .putHeader("Content-Type", "application/json")
+                            .end("{\"error\": \"Internal server error\"}");
+                    }
                     
                     LOGGER.info("Stream initialized for brand: " + brand);
                 },
@@ -72,9 +83,18 @@ public class DebugResource {
                     response.put("brand", brand);
                     response.put("status", "stopped");
                     
-                    rc.response()
-                        .putHeader("Content-Type", "application/json")
-                        .end(response.toString());
+                    try {
+                        String jsonResponse = objectMapper.writeValueAsString(response);
+                        rc.response()
+                            .putHeader("Content-Type", "application/json")
+                            .end(jsonResponse);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to serialize JSON response", e);
+                        rc.response()
+                            .setStatusCode(500)
+                            .putHeader("Content-Type", "application/json")
+                            .end("{\"error\": \"Internal server error\"}");
+                    }
                     
                     LOGGER.info("Stream stopped for brand: " + brand);
                 },
@@ -103,9 +123,18 @@ public class DebugResource {
                         stationInfo.put("createdAt", bundle.getCreatedAt());
                     });
                     
-                    rc.response()
-                        .putHeader("Content-Type", "application/json")
-                        .end(response.toString());
+                    try {
+                        String jsonResponse = objectMapper.writeValueAsString(response);
+                        rc.response()
+                            .putHeader("Content-Type", "application/json")
+                            .end(jsonResponse);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to serialize JSON response", e);
+                        rc.response()
+                            .setStatusCode(500)
+                            .putHeader("Content-Type", "application/json")
+                            .end("{\"error\": \"Internal server error\"}");
+                    }
                 },
                 failure -> {
                     LOGGER.error("Failed to list streams", failure);

@@ -5,6 +5,7 @@ import io.smallrye.config.WithDefault;
 import io.smallrye.config.WithName;
 
 import java.util.List;
+import java.util.Optional;
 
 @ConfigMapping(prefix = "aivox")
 public interface AivoxConfig {
@@ -22,6 +23,17 @@ public interface AivoxConfig {
     String getPathTemp();
 
     @WithName("station.whitelist")
-    @WithDefault("aye-ayes-ear,lumisonic,sunonation")
-    List<String> getStationWhitelist();
+    Optional<List<String>> getStationWhitelist();
+    
+    @WithName("ffmpeg.path")
+    @WithDefault("/usr/bin/ffmpeg")
+    String getFfmpegPath();
+    
+    @WithName("ffprobe.path")
+    @WithDefault("/usr/bin/ffprobe")
+    String getFfprobePath();
+    
+    @WithName("segmentation.output.dir")
+    @WithDefault("temp/segments")
+    String getSegmentationOutputDir();
 }

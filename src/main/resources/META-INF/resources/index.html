@@ -16,6 +16,17 @@
 <h1>HLS Test Player</h1>
 
 <div class="row">
+    <label for="station">Station:</label>
+    <select id="station">
+        <option value="lumisonic">lumisonic</option>
+    </select>
+    <button id="startStream" type="button">Start Stream</button>
+    <button id="stopStream" type="button">Stop Stream</button>
+</div>
+
+<div id="streamStatus"></div>
+
+<div class="row">
     <label for="src">HLS URL (.m3u8):</label>
 </div>
 
@@ -36,12 +47,69 @@
     const srcInput = document.getElementById('src');
     const loadBtn = document.getElementById('load');
     const statusEl = document.getElementById('status');
+    const stationSelect = document.getElementById('station');
+    const startStreamBtn = document.getElementById('startStream');
+    const stopStreamBtn = document.getElementById('stopStream');
+    const streamStatusEl = document.getElementById('streamStatus');
 
     const params = new URLSearchParams(window.location.search);
     const defaultSrc = params.get('src') || 'http://localhost:38798/api/stream/lumisonic/stream.m3u8';
     srcInput.value = defaultSrc;
 
+    function setStreamStatus(msg) {
+        streamStatusEl.textContent = msg || '';
+    }
+
+    async function startStream() {
+        const brand = stationSelect.value;
+        setStreamStatus('Starting stream for ' + brand + '...');
+        
+        try {
+            const response = await fetch('/api/debug/stream/' + brand, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                setStreamStatus('Stream started: ' + JSON.stringify(data));
+            } else {
+                const error = await response.text();
+                setStreamStatus('Error starting stream: ' + error);
+            }
+        } catch (err) {
+            setStreamStatus('Error: ' + err.message);
+        }
+    }
+
+    async function stopStream() {
+        const brand = stationSelect.value;
+        setStreamStatus('Stopping stream for ' + brand + '...');
+        
+        try {
+            const response = await fetch('/api/debug/stream/' + brand, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                setStreamStatus('Stream stopped: ' + JSON.stringify(data));
+            } else {
+                const error = await response.text();
+                setStreamStatus('Error stopping stream: ' + error);
+            }
+        } catch (err) {
+            setStreamStatus('Error: ' + err.message);
+        }
+    }
+
+    startStreamBtn.addEventListener('click', startStream);
+    stopStreamBtn.addEventListener('click', stopStream);
+
     let hls;
+    let retryCount = 0;
+    let maxRetries = 10;
+    let retryDelay = 1000; // Start with 1 second
+    let isServerDown = false;
 
     function setStatus(msg) {
         statusEl.textContent = msg || '';
@@ -49,6 +117,9 @@
 
     function load(src) {
         setStatus('Loading: ' + src);
+        retryCount = 0;
+        retryDelay = 1000;
+        isServerDown = false;
 
         if (hls) {
             hls.destroy();
@@ -103,11 +174,24 @@
                 setStatus(msg);
                 console.error('HLS error:', data);
                 
+                // Detect server downtime
+                if (data.response && (data.response.code === 0 || data.response.code >= 500)) {
+                    isServerDown = true;
+                } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR && 
+                          (data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR || 
+                           data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR)) {
+                    isServerDown = true;
+                }
+                
                 if (data.fatal) {
                     switch(data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
-                            setStatus(msg + '\n\nRetrying...');
-                            hls.startLoad();
+                            if (isServerDown) {
+                                handleServerError();
+                            } else {
+                                setStatus(msg + '\n\nRetrying...');
+                                retryWithBackoff();
+                            }
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
                             setStatus(msg + '\n\nRecovering...');
@@ -123,6 +207,41 @@
 
             setStatus('Using hls.js');
             return;
+        }
+
+        function handleServerError() {
+            if (retryCount >= maxRetries) {
+                setStatus('Server appears to be down. Max retries reached. Stopping requests.\nClick "Load" to retry manually.');
+                hls.destroy();
+                return;
+            }
+            
+            const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
+            setStatus(`Server appears to be down. Retrying in ${Math.round(delay/1000)}s... (Attempt ${retryCount + 1}/${maxRetries})`);
+            
+            setTimeout(() => {
+                retryCount++;
+                setStatus('Retrying connection to server...');
+                hls.loadSource(srcInput.value);
+                hls.startLoad();
+            }, delay);
+        }
+
+        function retryWithBackoff() {
+            if (retryCount >= maxRetries) {
+                setStatus('Max retries reached. Stopping.\nClick "Load" to retry manually.');
+                hls.destroy();
+                return;
+            }
+            
+            const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
+            setStatus(`Retrying in ${Math.round(delay/1000)}s... (Attempt ${retryCount + 1}/${maxRetries})`);
+            
+            setTimeout(() => {
+                retryCount++;
+                setStatus('Retrying...');
+                hls.startLoad();
+            }, delay);
         }
 
         setStatus('HLS is not supported in this browser');

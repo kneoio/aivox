@@ -16,15 +16,13 @@ public class SliderTimer {
     private Cancellable subscription;
 
     private Multi<Long> createTicker() {
-        LOGGER.info("Creating SliderTimer with interval: " + DEFAULT_INTERVAL_MS + "ms");
-
         Multi<Long> ticker = Multi.createFrom().ticks()
                 .every(Duration.ofMillis(DEFAULT_INTERVAL_MS))
                 .onOverflow().drop()
                 .broadcast().toAllSubscribers();
 
         subscription = ticker.subscribe().with(
-                timestamp -> LOGGER.debug("SliderTimer tick"),
+                timestamp -> {},
                 throwable -> LOGGER.error("SliderTimer error", throwable)
         );
         return ticker;

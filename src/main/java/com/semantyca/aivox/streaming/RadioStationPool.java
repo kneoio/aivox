@@ -2,7 +2,11 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.repository.brand.BrandRepository;
+import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
+import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.RadioDJProcessor;
+import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import io.smallrye.mutiny.Uni;
 import io.quarkus.runtime.Startup;
@@ -14,6 +18,7 @@ import org.jboss.logging.Logger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @ApplicationScoped
 public class RadioStationPool {
     private static final Logger LOGGER = Logger.getLogger(RadioStationPool.class);
-    
+
     private final ConcurrentHashMap<String, RadioStationBundle> pool = new ConcurrentHashMap<>();
 
     private final AivoxConfig aivoxConfig;
@@ -30,32 +35,44 @@ public class RadioStationPool {
     private final WaitingAudioProvider waitingAudioProvider;
     private final SegmentFeederTimer segmentFeederTimer;
     private final SliderTimer sliderTimer;
+    private final SoundFragmentRepository soundFragmentRepository;
+    private final BrandRepository brandRepository;
+    private final SoundFragmentFileHandler fileHandler;
+    private final AudioSegmentationService segmentationService;
 
     @Inject
-    public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig, 
-                          RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider,
-                          SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer) {
+    public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig,
+                            RadioDJProcessor radioDJProcessor, WaitingAudioProvider waitingAudioProvider,
+                            SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer,
+                            SoundFragmentRepository soundFragmentRepository, BrandRepository brandRepository,
+                            SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.radioDJProcessor = radioDJProcessor;
         this.waitingAudioProvider = waitingAudioProvider;
         this.segmentFeederTimer = segmentFeederTimer;
         this.sliderTimer = sliderTimer;
+        this.soundFragmentRepository = soundFragmentRepository;
+        this.brandRepository = brandRepository;
+        this.fileHandler = fileHandler;
+        this.segmentationService = segmentationService;
     }
 
     @PostConstruct
     void initStationsFromWhitelist() {
-        var whitelist = aivoxConfig.getStationWhitelist();
+        List<String> whitelist = aivoxConfig.getStationWhitelist().orElse(List.of());
         LOGGER.info("Initializing stations from whitelist: " + whitelist);
-        
-        for (String brandName : whitelist) {
-            initializeStation(brandName)
-                .subscribe()
-                .with(
-                    bundle -> LOGGER.info("Station initialized for brand: " + brandName),
-                    failure -> LOGGER.error("Failed to initialize station for brand: " + brandName, failure)
-                );
+        if (aivoxConfig.getStationWhitelist().isPresent()) {
+            for (String brandName : whitelist) {
+                initializeStation(brandName)
+                        .subscribe()
+                        .with(
+                                bundle -> LOGGER.info("Station initialized for brand: " + brandName),
+                                failure -> LOGGER.error("Failed to initialize station for brand: " + brandName, failure)
+                        );
+            }
         }
+
     }
 
     public Uni<RadioStationBundle> initializeStation(String brandName) {
@@ -69,32 +86,21 @@ public class RadioStationPool {
                         return Uni.createFrom().item(existingBundle);
                     }
 
-                    RadioStationBundle bundle = pool.compute(brand, (key, currentInPool) -> {
-                        if (currentInPool != null && currentInPool.isActive()) {
-                            LOGGER.info("Station " + key + " was concurrently initialized and is active. Using that instance.");
-                            return currentInPool;
-                        }
-
-                        LOGGER.info("Creating new StreamManager and PlaylistManager bundle for brand: " + key);
-                        
-                        // Create new instances for this brand
-                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor, waitingAudioProvider);
+                    pool.computeIfAbsent(brand, key -> {
+                        LOGGER.info("Creating new bundle for brand: " + key);
+                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, hlsConfig, radioDJProcessor, waitingAudioProvider, soundFragmentRepository, brandRepository, fileHandler, segmentationService);
                         StreamManager streamManager = new StreamManager(playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
-                        
-                        RadioStationBundle newBundle = new RadioStationBundle(key, streamManager, playlistManager);
-                        
-                        // Initialize the stream
                         streamManager.initializeStream(key);
-                        playlistManager.initializeBrand(key);
-                        
-                        LOGGER.info("Station bundle created and initialized for brand: " + key);
-                        return newBundle;
+                        return new RadioStationBundle(key, streamManager, playlistManager);
                     });
 
-                    return Uni.createFrom().item(bundle);
+                    RadioStationBundle bundle = pool.get(brand);
+
+                    return bundle.getPlaylistManager().initializeBrand(brand)
+                            .replaceWith(bundle);
                 })
-                .onFailure().invoke(failure -> 
-                    LOGGER.error("Failed to initialize station " + brandName + ": " + failure.getMessage(), failure)
+                .onFailure().invoke(failure ->
+                        LOGGER.error("Failed to initialize station " + brandName + ": " + failure.getMessage(), failure)
                 );
     }
 
@@ -105,15 +111,15 @@ public class RadioStationPool {
 
     public Uni<RadioStationBundle> stopAndRemoveStation(String brandName) {
         LOGGER.info("Attempting to stop and remove station: " + brandName);
-        
+
         RadioStationBundle bundle = pool.remove(brandName);
-        
+
         if (bundle != null) {
             LOGGER.info("Station " + brandName + " found in pool and removed. Shutting down components.");
-            
+
             // Shutdown both components
             bundle.shutdown();
-            
+
             return Uni.createFrom().item(bundle);
         } else {
             LOGGER.warn("Station " + brandName + " not found in pool during stopAndRemove.");

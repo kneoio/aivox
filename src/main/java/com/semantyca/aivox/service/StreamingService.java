@@ -91,12 +91,4 @@ public class StreamingService {
                 })
                 .onItem().transformToUni(uni -> uni);
     }
-
-    public Uni<RadioStationBundle> initializeStream(String brand) {
-        return initializeStation(brand);
-    }
-
-    public Uni<RadioStationBundle> shutdownStream(String brand) {
-        return stopStation(brand);
-    }
 }
