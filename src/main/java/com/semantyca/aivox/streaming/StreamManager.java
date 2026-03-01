@@ -100,7 +100,9 @@ public class StreamManager {
                         playlist.append("#EXTINF:")
                                 .append(segment.getDuration())
                                 .append(",")
-                                .append(segment.getSongMetadata() != null ? segment.getSongMetadata().toString() : "")
+                                .append(segment.getSongMetadata() != null ?
+                                        segment.getSongMetadata().getTitle() + " - " + segment.getSongMetadata().getArtist() :
+                                        "")
                                 .append("\n")
                                 .append("/api/stream/")
                                 .append(brand.toLowerCase())
