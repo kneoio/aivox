@@ -24,7 +24,7 @@ public class WaitingAudioProvider {
     AudioSegmentationService segmentationService;
 
     private UUID waitingSongId;
-    private Map<Long, List<HlsSegment>> originalWaitingSegments = new ConcurrentHashMap<>();
+    private final Map<Long, List<HlsSegment>> originalWaitingSegments = new ConcurrentHashMap<>();
     private volatile boolean initialized = false;
 
     public void initialize() {
