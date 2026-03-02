@@ -21,11 +21,11 @@ public class SoundFragmentBrandService {
     }
 
     public Uni<List<SoundFragment>> getBrandSongs(UUID brandId, PlaylistItemType fragmentType) {
-        return soundFragmentBrandRepository.getBrandSongs(brandId, fragmentType, 200, 0);
+        return soundFragmentBrandRepository.getBrandSongs(brandId, fragmentType, 50, 0);
     }
 
     public Uni<List<SoundFragment>> getBrandSongsRandomPage(UUID brandId, PlaylistItemType type){
-        return soundFragmentBrandRepository.getBrandSongs(brandId, type, 200, 0);
+        return soundFragmentBrandRepository.getBrandSongs(brandId, type, 50, 0);
     }
 
 }

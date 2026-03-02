@@ -13,6 +13,7 @@ import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.vertx.mutiny.core.Vertx;
 import org.jboss.logging.Logger;
 
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -29,6 +31,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 public class PlaylistManager {
 
@@ -47,6 +50,7 @@ public class PlaylistManager {
     private volatile boolean initializing = false;
 
     private final String brand;
+    private final Vertx vertx;
     private final WaitingAudioProvider waitingAudioProvider;
     private final SoundFragmentBrandService soundFragmentBrandService;
     private final BrandService brandService;
@@ -55,20 +59,21 @@ public class PlaylistManager {
     private final Path tempDir;
     private UUID brandId;
 
-
-    public PlaylistManager(String brand, AivoxConfig aivoxConfig,
+    public PlaylistManager(String brand,
+                           AivoxConfig aivoxConfig,
+                           Vertx vertx,
                            WaitingAudioProvider waitingAudioProvider,
                            SoundFragmentBrandService soundFragmentBrandService,
                            BrandService brandService,
                            SoundFragmentFileHandler fileHandler,
                            AudioSegmentationService segmentationService) {
         this.brand = brand;
+        this.vertx = vertx;
         this.waitingAudioProvider = waitingAudioProvider;
         this.soundFragmentBrandService = soundFragmentBrandService;
         this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
-
         this.tempDir = Paths.get(aivoxConfig.path().temp());
         try {
             Files.createDirectories(tempDir);
@@ -83,12 +88,10 @@ public class PlaylistManager {
         if (initialized) {
             return Uni.createFrom().voidItem();
         }
-        
         if (initializing) {
             LOGGER.debugf("%s Already initializing, waiting...", logPrefix());
             return Uni.createFrom().voidItem();
         }
-        
         initializing = true;
         return initialize();
     }
@@ -98,23 +101,20 @@ public class PlaylistManager {
 
         return resolveBrandId()
                 .onItem().invoke(() -> {
-                    LOGGER.infof("%s Brand ID resolved successfully, starting scheduler", logPrefix());
+                    LOGGER.infof("%s Brand ID resolved, starting scheduler", logPrefix());
                     startScheduler();
                 })
                 .onItem().transformToUni(v -> {
-                    LOGGER.infof("%s Initializing waiting audio provider", logPrefix());
                     waitingAudioProvider.initialize();
 
                     List<Uni<LiveSoundFragment>> unis = new ArrayList<>();
                     if (waitingAudioProvider.isWaitingAudioAvailable()) {
-                        LOGGER.infof("%s Waiting audio is available, creating fragment", logPrefix());
                         unis.add(waitingAudioProvider.createWaitingFragment());
                     } else {
-                        LOGGER.warnf("%s Waiting audio is NOT available", logPrefix());
+                        LOGGER.warnf("%s Waiting audio NOT available", logPrefix());
                     }
 
                     if (unis.isEmpty()) {
-                        LOGGER.warnf("%s No waiting fragments available, but marking as initialized", logPrefix());
                         initialized = true;
                         initializing = false;
                         LOGGER.infof("%s ========== INITIALIZATION COMPLETE: 0 waiting fragments ==========", logPrefix());
@@ -126,10 +126,9 @@ public class PlaylistManager {
                                 fragments.stream()
                                         .filter(Objects::nonNull)
                                         .forEach(playlistState.regularQueue::offer);
-
                                 initialized = true;
                                 initializing = false;
-                                LOGGER.infof("%s ========== INITIALIZATION COMPLETE: %d waiting fragment(s) ready ==========",
+                                LOGGER.infof("%s ========== INITIALIZATION COMPLETE: %d waiting fragment(s) ==========",
                                         logPrefix(), playlistState.regularQueue.size());
                             })
                             .replaceWithVoid();
@@ -147,7 +146,12 @@ public class PlaylistManager {
                 if (playlistState.regularQueue.size() <= TRIGGER_SELF_MANAGING) {
                     int count = Math.random() < 0.5 ? 1 : 2;
                     LOGGER.infof("%s Self-managing: feeding %d frag(s)", logPrefix(), count);
-                    feedFragments(count, false);
+                    // Dispatch onto Vert.x event loop so reactive PG client executes in correct context
+                    vertx.runOnContext(() -> feedFragments(count, false)
+                            .subscribe().with(
+                                    v -> LOGGER.debugf("%s Scheduler feed complete", logPrefix()),
+                                    e -> LOGGER.errorf(e, "%s Scheduler feed failed", logPrefix())
+                            ));
                 }
             } catch (Exception e) {
                 LOGGER.errorf(e, "%s Error during maintenance", logPrefix());
@@ -155,23 +159,27 @@ public class PlaylistManager {
         }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
-    private void feedFragments(int maxQuantity, boolean useCooldown) {
+    /**
+     * Returns a Uni<Void> so callers can chain or subscribe with proper context.
+     * Never call subscribe() on this from a non-Vert.x thread directly —
+     * always dispatch via vertx.runOnContext() first.
+     */
+    private Uni<Void> feedFragments(int maxQuantity, boolean useCooldown) {
         if (useCooldown) {
             long now = System.currentTimeMillis();
             long elapsed = now - lastStarvingFeedTime;
             if (elapsed < STARVING_FEED_COOLDOWN_MILLIS) {
-                LOGGER.debugf("%s Cooldown active, waiting %d ms",
+                LOGGER.debugf("%s Cooldown active, %d ms remaining",
                         logPrefix(), STARVING_FEED_COOLDOWN_MILLIS - elapsed);
-                return;
+                return Uni.createFrom().voidItem();
             }
             lastStarvingFeedTime = now;
         }
 
         int remaining = Math.max(0, REGULAR_BUFFER_MAX - playlistState.regularQueue.size());
         if (remaining == 0) {
-            LOGGER.debugf("%s Regular buffer at cap (%d), skipping feed",
-                    logPrefix(), REGULAR_BUFFER_MAX);
-            return;
+            LOGGER.debugf("%s Regular buffer at cap (%d), skipping feed", logPrefix(), REGULAR_BUFFER_MAX);
+            return Uni.createFrom().voidItem();
         }
 
         int quantityToFetch = Math.min(remaining, maxQuantity);
@@ -179,95 +187,73 @@ public class PlaylistManager {
 
         List<UUID> excludedIds = new ArrayList<>();
         excludedIds.addAll(playlistState.regularQueue.stream()
-                .map(LiveSoundFragment::getSoundFragmentId)
-                .toList());
+                .map(LiveSoundFragment::getSoundFragmentId).toList());
         excludedIds.addAll(playlistState.prioritizedQueue.stream()
-                .map(LiveSoundFragment::getSoundFragmentId)
-                .toList());
+                .map(LiveSoundFragment::getSoundFragmentId).toList());
         slicedFragmentsLock.readLock().lock();
         try {
             excludedIds.addAll(playlistState.obtainedByHlsPlaylist.stream()
-                    .map(LiveSoundFragment::getSoundFragmentId)
-                    .toList());
+                    .map(LiveSoundFragment::getSoundFragmentId).toList());
         } finally {
             slicedFragmentsLock.readLock().unlock();
         }
 
         if (brandId == null) {
-            LOGGER.warnf("%s Cannot resolve brand ID for slug: %s", logPrefix(), brand);
-            return;
+            LOGGER.warnf("%s Brand ID not resolved for slug: %s", logPrefix(), brand);
+            return Uni.createFrom().voidItem();
         }
 
         LOGGER.infof("%s Calling getBrandSongs for brandId: %s", logPrefix(), brandId);
-        
-        soundFragmentBrandService.getBrandSongs(brandId, PlaylistItemType.SONG)
+
+        return soundFragmentBrandService.getBrandSongs(brandId, PlaylistItemType.SONG)
                 .ifNoItem().after(Duration.ofSeconds(60)).fail()
-                .onFailure().invoke(e -> {
-                    LOGGER.errorf("%s Database query timeout - getBrandSongs() took >60s. Check database performance!", logPrefix());
-                })
-                .onFailure().recoverWithItem(java.util.Collections.emptyList())
-                .onItem().invoke(songs -> {
-                    if (songs == null) {
-                        LOGGER.warnf("%s Retrieved NULL songs list from database", logPrefix());
-                    } else {
-                        LOGGER.infof("%s Retrieved %d songs from database", logPrefix(), songs.size());
-                    }
-                })
+                .onFailure().invoke(e ->
+                        LOGGER.errorf(e, "%s getBrandSongs failed: %s", logPrefix(), e.getClass().getName()))
+                .onFailure().recoverWithItem(Collections.emptyList())
+                .onItem().invoke(songs ->
+                        LOGGER.infof("%s Retrieved %d songs from database", logPrefix(), songs == null ? 0 : songs.size()))
                 .onItem().transform(songs -> {
                     List<SoundFragment> available = songs.stream()
                             .filter(f -> !excludedIds.contains(f.getId()))
-                            .collect(java.util.stream.Collectors.toList());
+                            .collect(Collectors.toList());
                     LOGGER.infof("%s After filtering: %d available songs", logPrefix(), available.size());
-                    java.util.Collections.shuffle(available);
+                    Collections.shuffle(available);
                     return available;
                 })
                 .onItem().transformToMulti(Multi.createFrom()::iterable)
                 .select().first(quantityToFetch)
-                .onItem().call(fragment -> {
-                    LOGGER.infof("%s Processing song: %s - %s", logPrefix(), fragment.getTitle(), fragment.getArtist());
-                    return Uni.createFrom().voidItem();
-                })
                 .onItem().transformToUniAndMerge(fragment -> {
                     try {
-                        assert fragment != null;
                         return addFragmentToQueue(fragment);
                     } catch (Exception e) {
-                        LOGGER.warnf("%s Skipping fragment %s: %s",
-                                logPrefix(), fragment.getId(), e.getMessage());
+                        LOGGER.warnf("%s Skipping fragment %s: %s", logPrefix(), fragment.getId(), e.getMessage());
                         return Uni.createFrom().item(false);
                     }
                 })
                 .collect().asList()
-                .subscribe().with(
-                        processed -> {
-                            long successCount = processed.stream()
-                                    .filter(b -> b != null && b)
-                                    .count();
-                            LOGGER.infof("%s Completed: %d/%d fragments added successfully",
-                                    logPrefix(), successCount, processed.size());
-                        },
-                        error -> LOGGER.errorf(error, "%s Processing failed", logPrefix())
-                );
+                .onItem().invoke(processed -> {
+                    long successCount = processed.stream().filter(b -> b != null && b).count();
+                    LOGGER.infof("%s Completed: %d/%d fragments added successfully",
+                            logPrefix(), successCount, processed.size());
+                })
+                .replaceWithVoid();
     }
 
     private Uni<Void> resolveBrandId() {
         if (brandId != null) {
-            LOGGER.debugf("%s Brand ID already resolved: %s", logPrefix(), brandId);
             return Uni.createFrom().voidItem();
         }
-        
         LOGGER.infof("%s Resolving brand ID for slug: %s", logPrefix(), brand);
         return brandService.getBySlugName(brand)
                 .onItem().invoke(brandEntity -> {
                     if (brandEntity == null) {
-                        LOGGER.errorf("%s Brand entity is null for slug: %s", logPrefix(), brand);
                         throw new IllegalStateException("Brand not found: " + brand);
                     }
                     brandId = brandEntity.getId();
-                    LOGGER.infof("%s Brand ID resolved successfully: %s", logPrefix(), brandId);
+                    LOGGER.infof("%s Brand ID resolved: %s", logPrefix(), brandId);
                 })
                 .onFailure().transform(e -> {
-                    LOGGER.errorf(e, "%s CRITICAL: Failed to resolve brand ID for slug: %s", logPrefix(), brand);
+                    LOGGER.errorf(e, "%s Failed to resolve brand ID for slug: %s", logPrefix(), brand);
                     return new RuntimeException("Cannot resolve brand ID for: " + brand, e);
                 })
                 .replaceWithVoid();
@@ -283,47 +269,32 @@ public class PlaylistManager {
         liveSoundFragment.setSoundFragmentId(soundFragment.getId());
         liveSoundFragment.setMetadata(songMetadata);
 
-        LOGGER.infof("%s Starting to process fragment: %s - %s", logPrefix(), soundFragment.getTitle(), soundFragment.getArtist());
-        
+        LOGGER.infof("%s Processing fragment: %s - %s", logPrefix(), soundFragment.getTitle(), soundFragment.getArtist());
+
         return fileHandler.getFirstFile(soundFragment.getId())
                 .ifNoItem().after(Duration.ofSeconds(30)).fail()
                 .onFailure().recoverWithUni(ex -> {
-                    LOGGER.warnf("%s Failed to retrieve file metadata for fragment %s: %s", logPrefix(), soundFragment.getId(), ex.getMessage());
+                    LOGGER.warnf("%s Failed to retrieve file metadata for %s: %s",
+                            logPrefix(), soundFragment.getId(), ex.getMessage());
                     return Uni.createFrom().item((FileMetadata) null);
-                })
-                .onItem().invoke(fileMetadata -> {
-                    if (fileMetadata != null) {
-                        LOGGER.infof("%s Retrieved file metadata: %s (size: %d bytes)", 
-                                logPrefix(), fileMetadata.getFileOriginalName(), 
-                                fileMetadata.getContentLength() != null ? fileMetadata.getContentLength() : 0);
-                    }
                 })
                 .onItem().transformToUni(fileMetadata -> {
                     if (fileMetadata == null) {
                         LOGGER.warnf("%s No file found for fragment: %s", logPrefix(), soundFragment.getId());
                         return Uni.createFrom().item(false);
                     }
-
-                    LOGGER.infof("%s Starting materialization for: %s", logPrefix(), fileMetadata.getFileOriginalName());
-                    
+                    LOGGER.infof("%s Materializing: %s", logPrefix(), fileMetadata.getFileOriginalName());
                     return fileMetadata.materializeFileStream(tempDir.toString())
                             .ifNoItem().after(Duration.ofMinutes(5)).fail()
-                            .onFailure().invoke(e -> {
-                                LOGGER.errorf(e, "%s Materialization FAILED for %s: %s", 
-                                        logPrefix(), fileMetadata.getFileOriginalName(), e.getMessage());
-                            })
-                            .onItem().invoke(tempFile -> {
-                                LOGGER.infof("%s Materialization complete: %s", logPrefix(), tempFile);
-                            })
+                            .onFailure().invoke(e ->
+                                    LOGGER.errorf(e, "%s Materialization FAILED for %s", logPrefix(), fileMetadata.getFileOriginalName()))
                             .onItem().transformToUni(tempFile -> {
-                                LOGGER.infof("%s Starting segmentation for: %s", logPrefix(), songMetadata.getTitle());
+                                LOGGER.infof("%s Segmenting: %s", logPrefix(), songMetadata.getTitle());
                                 long[] bitrates = {128000L, 64000L};
                                 return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
                                         .ifNoItem().after(Duration.ofMinutes(3)).fail()
-                                        .onFailure().invoke(e -> {
-                                            LOGGER.errorf(e, "%s Segmentation FAILED for %s: %s", 
-                                                    logPrefix(), songMetadata.getTitle(), e.getMessage());
-                                        })
+                                        .onFailure().invoke(e ->
+                                                LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))
                                         .onItem().invoke(segments -> {
                                             try {
                                                 Files.deleteIfExists(tempFile);
@@ -333,23 +304,20 @@ public class PlaylistManager {
                                         })
                                         .onItem().transformToUni(segments -> {
                                             if (segments.isEmpty()) {
-                                                LOGGER.warnf("%s No segments created for fragment: %s", logPrefix(), soundFragment.getId());
+                                                LOGGER.warnf("%s No segments for fragment: %s", logPrefix(), soundFragment.getId());
                                                 return Uni.createFrom().item(false);
                                             }
-
                                             liveSoundFragment.setSegments(segments);
                                             playlistState.regularQueue.add(liveSoundFragment);
-
-                                            LOGGER.infof("%s ✓ Successfully added fragment to queue: %s - %s (%d segments)", 
-                                                    logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(), 
+                                            LOGGER.infof("%s ✓ Added: %s - %s (%d segments)",
+                                                    logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                                     segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                                             return Uni.createFrom().item(true);
                                         });
                             })
-                            .onFailure().transform(e -> {
-                                LOGGER.errorf(e, "%s Failed to materialize/segment file: %s",
-                                        logPrefix(), fileMetadata.getFileOriginalName());
-                                return new RuntimeException("Materialization failed", e);
+                            .onFailure().recoverWithItem(e -> {
+                                LOGGER.errorf(e, "%s Failed to process file: %s", logPrefix(), fileMetadata.getFileOriginalName());
+                                return false;
                             });
                 });
     }
@@ -359,67 +327,59 @@ public class PlaylistManager {
             LOGGER.infof("%s Not initialized, triggering lazy initialization", logPrefix());
             ensureInitialized().await().indefinitely();
         }
-        
+
         LOGGER.debugf("%s Queues: prioritized=%d, regular=%d",
-                logPrefix(),
-                playlistState.prioritizedQueue.size(),
-                playlistState.regularQueue.size());
+                logPrefix(), playlistState.prioritizedQueue.size(), playlistState.regularQueue.size());
 
         if (!playlistState.prioritizedQueue.isEmpty()) {
             LiveSoundFragment next = playlistState.prioritizedQueue.poll();
             moveFragmentToProcessedList(next);
-            LOGGER.debugf("%s Returned prioritized: %s", logPrefix(), next.getMetadata());
             return next;
         }
 
         if (!playlistState.regularQueue.isEmpty()) {
             LiveSoundFragment next = playlistState.regularQueue.poll();
             moveFragmentToProcessedList(next);
-            LOGGER.debugf("%s Returned regular: %s", logPrefix(), next.getMetadata());
             return next;
         }
 
-        LOGGER.warnf("%s Queues empty, activating waiting audio", logPrefix());
-        feedFragments(1, true);
+        LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
+        // Dispatch onto Vert.x event loop — never block or subscribe from caller thread
+        vertx.runOnContext(() -> feedFragments(1, true)
+                .subscribe().with(
+                        v -> LOGGER.debugf("%s Starving feed complete", logPrefix()),
+                        e -> LOGGER.errorf(e, "%s Starving feed failed", logPrefix())
+                ));
 
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             return waitingAudioProvider.createWaitingFragment()
                     .await().atMost(Duration.ofSeconds(5));
-        } else {
-            return null;
         }
+        return null;
     }
 
     private void moveFragmentToProcessedList(LiveSoundFragment fragment) {
         if (fragment == null) return;
-
         slicedFragmentsLock.writeLock().lock();
         try {
             playlistState.obtainedByHlsPlaylist.add(fragment);
             playlistState.fragmentsForMp3.add(fragment);
-
             while (playlistState.fragmentsForMp3.size() > 2) {
                 playlistState.fragmentsForMp3.removeFirst();
             }
-
             LOGGER.debugf("%s Queued fragment: %s (processed: %d)",
-                    logPrefix(),fragment.getMetadata(),
-                    playlistState.obtainedByHlsPlaylist.size());
-
+                    logPrefix(), fragment.getMetadata(), playlistState.obtainedByHlsPlaylist.size());
             if (playlistState.obtainedByHlsPlaylist.size() > PROCESSED_QUEUE_MAX_SIZE) {
                 LiveSoundFragment removed = playlistState.obtainedByHlsPlaylist.poll();
-                LOGGER.tracef("%s Trimmed processed queue, removed: %s",logPrefix(), removed.getMetadata());
+                LOGGER.tracef("%s Trimmed processed queue, removed: %s", logPrefix(), removed.getMetadata());
             }
         } finally {
             slicedFragmentsLock.writeLock().unlock();
         }
     }
 
-
-
     public void shutdown() {
         LOGGER.infof("%s Shutting down PlaylistManager", logPrefix());
-
         if (scheduler != null) {
             scheduler.shutdown();
             try {
@@ -435,7 +395,6 @@ public class PlaylistManager {
                 LOGGER.warnf("%s Shutdown interrupted", logPrefix());
             }
         }
-
         slicedFragmentsLock.writeLock().lock();
         try {
             playlistState.obtainedByHlsPlaylist.clear();
@@ -443,11 +402,9 @@ public class PlaylistManager {
         } finally {
             slicedFragmentsLock.writeLock().unlock();
         }
-
         playlistState.regularQueue.clear();
         playlistState.prioritizedQueue.clear();
-
-        LOGGER.infof("%s Shutdown complete. All queues cleared.", logPrefix());
+        LOGGER.infof("%s Shutdown complete.", logPrefix());
     }
 
     private String logPrefix() {

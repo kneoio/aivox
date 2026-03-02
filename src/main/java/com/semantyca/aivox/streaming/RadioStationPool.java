@@ -9,6 +9,8 @@ import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
+
+import io.vertx.mutiny.core.Vertx;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -37,12 +39,13 @@ public class RadioStationPool {
     private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
+    private final Vertx vertx;
 
     @Inject
     public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig, WaitingAudioProvider waitingAudioProvider,
                             SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer,
                             SoundFragmentBrandService soundFragmentBrandService, BrandService brandService,
-                            SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService) {
+                            SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService, Vertx vertx) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.waitingAudioProvider = waitingAudioProvider;
@@ -52,6 +55,7 @@ public class RadioStationPool {
         this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
+        this.vertx = vertx;
     }
 
     @PostConstruct
@@ -84,7 +88,7 @@ public class RadioStationPool {
 
                     RadioStationBundle bundle = pool.computeIfAbsent(brand, key -> {
                         LOGGER.info("Creating new bundle for brand: " + key);
-                        PlaylistManager playlistManager = new PlaylistManager(key, aivoxConfig, waitingAudioProvider,
+                        PlaylistManager playlistManager = new PlaylistManager(key, aivoxConfig, vertx, waitingAudioProvider,
                                 soundFragmentBrandService, brandService, fileHandler, segmentationService);
                         StreamManager streamManager = new StreamManager(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
                         streamManager.initializeStream();

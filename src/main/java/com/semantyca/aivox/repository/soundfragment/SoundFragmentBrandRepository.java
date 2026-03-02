@@ -11,13 +11,11 @@ import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.security.SecureRandom;
 import java.util.List;
 import java.util.UUID;
 
 @ApplicationScoped
 public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstract {
-    private final SecureRandom secureRandom = new SecureRandom();
 
     @Inject
     public SoundFragmentBrandRepository(PgPool client, ObjectMapper mapper, RLSRepository rlsRepository) {
@@ -43,11 +41,5 @@ public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstrac
                 .onItem().transformToUni(row -> from(row, true, true, true))
                 .concatenate()
                 .collect().asList();
-    }
-
-    public Uni<List<SoundFragment>> getBrandSongsRandomPage(UUID brandId, PlaylistItemType type) {
-        int limit = 200;
-        int offset = secureRandom.nextInt(20) * limit;
-        return getBrandSongs(brandId, type, limit, offset);
     }
 }
