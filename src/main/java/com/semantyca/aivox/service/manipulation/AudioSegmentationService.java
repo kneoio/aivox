@@ -1,0 +1,200 @@
+package com.semantyca.aivox.service.manipulation;
+
+import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.streaming.HlsSegment;
+import com.semantyca.aivox.streaming.SongMetadata;
+import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import net.bramp.ffmpeg.FFmpegExecutor;
+import net.bramp.ffmpeg.builder.FFmpegBuilder;
+import org.jboss.logging.Logger;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+@ApplicationScoped
+public class AudioSegmentationService {
+    private static final Logger LOGGER = Logger.getLogger(AudioSegmentationService.class);
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("HH");
+    
+    private final FFmpegProvider ffmpeg;
+    private final String outputDir;
+    private final int segmentDuration;
+
+    @Inject
+    public AudioSegmentationService(AivoxConfig aivoxConfig, FFmpegProvider ffmpeg, HlsConfig hlsConfig) {
+        this.ffmpeg = ffmpeg;
+        this.outputDir = aivoxConfig.segmentation().output().dir();
+        this.segmentDuration = hlsConfig.getSegmentDuration();
+        new File(outputDir).mkdirs();
+        preallocateDirectories();
+    }
+
+    public Uni<Map<Long, ConcurrentLinkedQueue<HlsSegment>>> slice(SongMetadata songMetadata, Path filePath, List<Long> bitRates) {
+        return Uni.createFrom().item(() -> segmentAudioFileMultipleBitrates(filePath, songMetadata, bitRates))
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                .onFailure().invoke(e -> LOGGER.error("Failed to slice audio file: " + filePath, e))
+                .chain(this::createHlsQueueFromMultipleBitrateSegments);
+    }
+
+    private Uni<Map<Long, ConcurrentLinkedQueue<HlsSegment>>> createHlsQueueFromMultipleBitrateSegments(
+            Map<Long, List<SegmentInfo>> segmentsByBitrate) {
+        if (segmentsByBitrate.isEmpty()) {
+            return Uni.createFrom().item(new ConcurrentHashMap<>());
+        }
+        return Uni.createFrom().item(() -> {
+            Map<Long, ConcurrentLinkedQueue<HlsSegment>> resultMap = new ConcurrentHashMap<>();
+            List<Uni<Void>> tasks = segmentsByBitrate.entrySet().stream()
+                    .map(entry -> Uni.createFrom().item(() -> {
+                        ConcurrentLinkedQueue<HlsSegment> segments = createHlsQueueFromSegments(entry.getValue());
+                        resultMap.put(entry.getKey(), segments);
+                        return (Void) null;
+                    }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool()))
+                    .toList();
+            Uni.combine().all().unis(tasks).with(list -> (Void) null).await().indefinitely();
+            return resultMap;
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    private ConcurrentLinkedQueue<HlsSegment> createHlsQueueFromSegments(List<SegmentInfo> segments) {
+        ConcurrentLinkedQueue<HlsSegment> hlsSegments = new ConcurrentLinkedQueue<>();
+        for (SegmentInfo segment : segments) {
+            try {
+                byte[] data = Files.readAllBytes(Paths.get(segment.path()));
+                HlsSegment hlsSegment = new HlsSegment();
+                hlsSegment.setSequence(segment.sequenceIndex());
+                hlsSegment.setData(data);
+                hlsSegment.setDuration(segment.duration());
+                hlsSegment.setSongMetadata(segment.songMetadata());
+                hlsSegment.setFirstSegmentOfFragment(segment.sequenceIndex() == 0);
+                hlsSegments.add(hlsSegment);
+            } catch (IOException e) {
+                LOGGER.error("Error reading segment file into byte array: " + segment.path(), e);
+            }
+        }
+        return hlsSegments;
+    }
+
+    public Map<Long, List<SegmentInfo>> segmentAudioFileMultipleBitrates(Path audioFilePath, SongMetadata songMetadata, List<Long> bitRates) {
+        Map<Long, List<SegmentInfo>> segmentsByBitrate = new ConcurrentHashMap<>();
+        LocalDateTime now = LocalDateTime.now();
+        String today = now.format(DATE_FORMATTER);
+        String currentHour = now.format(HOUR_FORMATTER);
+        String sanitizedSongName = sanitizeFileName(songMetadata.toString());
+
+        try {
+            FFmpegBuilder builder = new FFmpegBuilder().setInput(audioFilePath.toString());
+            Map<Long, BitrateOutputInfo> outputInfoMap = new HashMap<>();
+
+            for (Long bitRate : bitRates) {
+                String bitrateDir = sanitizedSongName + "_" + bitRate + "k";
+                Path songDir = Paths.get(outputDir, today, currentHour, bitrateDir);
+                Files.createDirectories(songDir);
+                String baseName = UUID.randomUUID().toString();
+                String segmentPattern = songDir + File.separator + baseName + "_%03d.ts";
+                String segmentListFile = songDir + File.separator + baseName + "_segments.txt";
+                outputInfoMap.put(bitRate, new BitrateOutputInfo(songDir, segmentListFile, songMetadata));
+
+                builder.addOutput(segmentPattern)
+                        .setAudioCodec("aac")
+                        .setAudioBitRate(bitRate)
+                        .setFormat("segment")
+                        .addExtraArgs("-segment_time", String.valueOf(segmentDuration))
+                        .addExtraArgs("-segment_format", "mpegts")
+                        .addExtraArgs("-segment_list", segmentListFile)
+                        .addExtraArgs("-segment_list_type", "flat")
+                        .addExtraArgs("-ac", "2")
+                        .addExtraArgs("-ar", "44100")
+                        .addExtraArgs("-channel_layout", "stereo")
+                        .addExtraArgs("-map", "0:a")
+                        .addExtraArgs("-metadata", "title=" + songMetadata.getTitle())
+                        .addExtraArgs("-metadata", "artist=" + songMetadata.getArtist())
+                        .addExtraArgs("-af", "dynaudnorm,acompressor")
+                        .addExtraArgs("-threads", "0")
+                        .addExtraArgs("-preset", "ultrafast")
+                        .addExtraArgs("-aac_coder", "twoloop")
+                        .addExtraArgs("-nostdin")
+                        .addExtraArgs("-vn")
+                        .done();
+            }
+
+            FFmpegExecutor executor = new FFmpegExecutor(ffmpeg.getFFmpeg());
+            executor.createJob(builder).run();
+
+            Map<Long, List<SegmentInfo>> processedSegments = new ConcurrentHashMap<>();
+            List<Uni<Void>> segmentTasks = outputInfoMap.entrySet().stream()
+                    .map(entry -> Uni.createFrom().item(() -> {
+                        List<SegmentInfo> segments = processSegmentList(entry.getKey(), entry.getValue());
+                        processedSegments.put(entry.getKey(), segments);
+                        return (Void) null;
+                    }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool()))
+                    .toList();
+            Uni.combine().all().unis(segmentTasks).with(list -> (Void) null).await().indefinitely();
+            segmentsByBitrate.putAll(processedSegments);
+
+        } catch (IOException e) {
+            LOGGER.error("FFmpeg error for file: " + audioFilePath + ", error: " + e.getMessage());
+        } catch (Exception e) {
+            LOGGER.error("Error segmenting audio file: " + audioFilePath, e);
+        }
+        return segmentsByBitrate;
+    }
+
+    private List<SegmentInfo> processSegmentList(Long bitRate, BitrateOutputInfo outputInfo) {
+        List<SegmentInfo> segments = new ArrayList<>();
+        try {
+            List<String> segmentFiles = Files.readAllLines(Paths.get(outputInfo.segmentListFile));
+            for (int i = 0; i < segmentFiles.size(); i++) {
+                String segmentFile = segmentFiles.get(i).trim();
+                if (!segmentFile.isEmpty()) {
+                    Path segmentPath = Paths.get(outputInfo.songDir.toString(), segmentFile);
+                    SegmentInfo info = new SegmentInfo(
+                            segmentPath.toString(),
+                            outputInfo.songMetadata,
+                            segmentDuration,
+                            i
+                    );
+                    segments.add(info);
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.error("Error reading segment list file: " + outputInfo.segmentListFile, e);
+        }
+        return segments;
+    }
+
+    private void preallocateDirectories() {
+        LocalDateTime now = LocalDateTime.now();
+        String today = now.format(DATE_FORMATTER);
+        for (int hour = 0; hour < 24; hour++) {
+            Path hourDir = Paths.get(outputDir, today, String.format("%02d", hour));
+            try {
+                Files.createDirectories(hourDir);
+            } catch (IOException e) {
+                LOGGER.warn("Could not pre-create directory: " + hourDir);
+            }
+        }
+    }
+
+    private String sanitizeFileName(String input) {
+        return input.replaceAll("[\\\\/:*?\"<>|]", "_")
+                .replaceAll("\\s+", "_")
+                .trim();
+    }
+
+    private record BitrateOutputInfo(Path songDir, String segmentListFile, SongMetadata songMetadata) {}
+    
+    public record SegmentInfo(String path, SongMetadata songMetadata, int duration, int sequenceIndex) {}
+}
