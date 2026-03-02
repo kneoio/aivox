@@ -25,10 +25,10 @@ public class RadioStationBundle {
         active = false;
         try {
             if (streamManager != null) {
-                streamManager.shutdownStream(brand);
+                streamManager.shutdown();
             }
             if (playlistManager != null) {
-                playlistManager.shutdownBrand(brand);
+                playlistManager.shutdown();
             }
             LOGGER.info("Station bundle shutdown completed for brand: " + brand);
         } catch (Exception e) {

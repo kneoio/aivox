@@ -73,7 +73,7 @@ public class StreamingResource {
         String segmentFile = rc.pathParam("segmentFile");
         String brand = rc.pathParam("brand").toLowerCase();
         
-        LOGGER.info("Segment request: brand=" + brand + ", file=" + segmentFile);
+        //LOGGER.info("Segment request: brand=" + brand + ", file=" + segmentFile);
         
         streamingService.getSegment(brand, segmentFile)
             .subscribe()

@@ -1,27 +1,25 @@
 package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.HlsConfig;
-import com.semantyca.aivox.service.AudioFile;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
-import jakarta.enterprise.context.Dependent;
-import jakarta.inject.Inject;
 import io.smallrye.mutiny.subscription.Cancellable;
 import org.jboss.logging.Logger;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Dependent
 public class StreamManager {
     private static final ZoneId ZONE_ID = ZoneId.of("Europe/Lisbon");
     private static final Logger LOGGER = Logger.getLogger(StreamManager.class);
@@ -30,18 +28,20 @@ public class StreamManager {
     private final AtomicLong currentSequence = new AtomicLong(0);
     private static final int SEGMENTS_TO_DRIP_PER_FEED_CALL = 1;
 
-    private final Map<String, StreamState> streamStates = new ConcurrentHashMap<>();
+    private final String brand;
+    private final StreamState streamState = new StreamState();
     private final PlaylistManager playlistManager;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final HlsConfig hlsConfig;
     private final SegmentFeederTimer segmentFeederTimer;
     private final SliderTimer sliderTimer;
 
-    private final Map<String, Cancellable> timerSubscriptions = new ConcurrentHashMap<>();
+    private Cancellable feederSubscription;
+    private Cancellable sliderSubscription;
 
-    @Inject
-    public StreamManager(PlaylistManager playlistManager, HlsConfig hlsConfig,
+    public StreamManager(String brand, PlaylistManager playlistManager, HlsConfig hlsConfig,
                          SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer) {
+        this.brand = brand;
         this.playlistManager = playlistManager;
         this.hlsConfig = hlsConfig;
         this.segmentFeederTimer = segmentFeederTimer;
@@ -66,14 +66,8 @@ public class StreamManager {
     }
 
     public String generatePlaylist(String brand, Long bitrate) {
-        StreamState state = streamStates.get(brand.toLowerCase());
-        if (state == null) {
-            LOGGER.warn("No stream state for brand: " + brand);
-            return getDefaultPlaylist();
-        }
-
-        if (state.liveSegments.isEmpty()) {
-            LOGGER.warn("liveSegments is EMPTY for brand: " + brand + ", pendingQueue size: " + state.pendingQueue.size());
+        if (streamState.liveSegments.isEmpty()) {
+            LOGGER.warn("liveSegments is EMPTY for brand: " + brand + ", pendingQueue size: " + streamState.pendingQueue.size());
             return getDefaultPlaylist();
         }
 
@@ -85,13 +79,13 @@ public class StreamManager {
                 .append("#EXT-X-PLAYLIST-TYPE:EVENT\n")  // CRITICAL - DO NOT REMOVE
                 .append("#EXT-X-TARGETDURATION:").append(hlsConfig.getSegmentDuration()).append("\n");
 
-        long firstSequenceInWindow = state.liveSegments.firstKey();
+        long firstSequenceInWindow = streamState.liveSegments.firstKey();
         playlist.append("#EXT-X-MEDIA-SEQUENCE:").append(firstSequenceInWindow).append("\n");
         playlist.append("#EXT-X-PROGRAM-DATE-TIME:")
                 .append(ZonedDateTime.now(ZONE_ID).format(DateTimeFormatter.ISO_INSTANT))
                 .append("\n");
 
-        state.liveSegments.tailMap(firstSequenceInWindow).entrySet().stream()
+        streamState.liveSegments.tailMap(firstSequenceInWindow).entrySet().stream()
                 .limit(hlsConfig.getMaxVisibleSegments())
                 .forEach(entry -> {
                     Map<Long, HlsSegment> bitrateSlot = entry.getValue();
@@ -139,13 +133,7 @@ public class StreamManager {
             long bitrate = Long.parseLong(matcher.group(2));
             long sequence = Long.parseLong(matcher.group(3));
             
-            StreamState state = streamStates.get(brand.toLowerCase());
-            if (state == null) {
-                LOGGER.debug("No stream state found for brand: " + brand);
-                return null;
-            }
-            
-            Map<Long, HlsSegment> bitrateSlot = state.liveSegments.get(sequence);
+            Map<Long, HlsSegment> bitrateSlot = streamState.liveSegments.get(sequence);
             if (bitrateSlot == null) {
                 LOGGER.debug("Segment sequence " + sequence + " not found in liveSegments");
                 return null;
@@ -167,44 +155,32 @@ public class StreamManager {
         }
     }
 
-    // Note: Scheduled methods removed since StreamManager is now @Dependent
-    // The scheduling is handled by the RadioStationPool or should be moved to a separate @ApplicationScoped service
-    public void feedSegments() {
-        executorService.submit(() -> {
-            for (Map.Entry<String, StreamState> entry : streamStates.entrySet()) {
-                String brand = entry.getKey();
-                StreamState state = entry.getValue();
-                feedSegmentsForBrand(brand, state);
-            }
-        });
-    }
-
-    private void feedSegmentsForBrand(String brand, StreamState state) {
-        LOGGER.info("feedSegmentsForBrand called for " + brand + ", pendingQueue: " + state.pendingQueue.size() + ", liveSegments: " + state.liveSegments.size());
+    private void feedSegments() {
+        LOGGER.info("feedSegments called for " + brand + ", pendingQueue: " + streamState.pendingQueue.size() + ", liveSegments: " + streamState.liveSegments.size());
         
-        if (!state.pendingQueue.isEmpty()) {
+        if (!streamState.pendingQueue.isEmpty()) {
             for (int i = 0; i < SEGMENTS_TO_DRIP_PER_FEED_CALL; i++) {
-                if (state.liveSegments.size() >= hlsConfig.getMaxVisibleSegments() * 2) {
-                    LOGGER.debug("Live segments buffer for " + brand + " is full (" + state.liveSegments.size() + "/" + (hlsConfig.getMaxVisibleSegments() * 2) + "). Pausing drip-feed.");
+                if (streamState.liveSegments.size() >= hlsConfig.getMaxVisibleSegments() * 2) {
+                    LOGGER.debug("Live segments buffer for " + brand + " is full (" + streamState.liveSegments.size() + "/" + (hlsConfig.getMaxVisibleSegments() * 2) + "). Pausing drip-feed.");
                     break;
                 }
-                Map<Long, HlsSegment> bitrateSlot = state.pendingQueue.poll();
+                Map<Long, HlsSegment> bitrateSlot = streamState.pendingQueue.poll();
                 if (bitrateSlot != null) {
                     long seq = bitrateSlot.values().iterator().next().getSequence();
-                    state.liveSegments.put(seq, bitrateSlot);
+                    streamState.liveSegments.put(seq, bitrateSlot);
                     LOGGER.info("Moved segment seq=" + seq + " from pending to live for brand: " + brand);
                 }
             }
         }
 
-        if (state.pendingQueue.size() < PENDING_QUEUE_REFILL_THRESHOLD) {
-            LOGGER.info("Pending queue below threshold (" + state.pendingQueue.size() + " < " + PENDING_QUEUE_REFILL_THRESHOLD + "), fetching from PlaylistManager for brand: " + brand);
+        if (streamState.pendingQueue.size() < PENDING_QUEUE_REFILL_THRESHOLD) {
+            LOGGER.info("Pending queue below threshold (" + streamState.pendingQueue.size() + " < " + PENDING_QUEUE_REFILL_THRESHOLD + "), fetching from PlaylistManager for brand: " + brand);
             try {
                 // Get next fragment from playlist manager with real HLS segments
-                LiveSoundFragment fragment = playlistManager.getNextLiveFragment(brand);
+                LiveSoundFragment fragment = playlistManager.getNextLiveFragment();
                 if (fragment != null) {
                     LOGGER.info("PlaylistManager returned fragment with ID: " + fragment.getSoundFragmentId());
-                    addFragmentToPendingQueue(fragment, state);
+                    addFragmentToPendingQueue(fragment);
                 } else {
                     LOGGER.warn("PlaylistManager returned null fragment for brand: " + brand);
                 }
@@ -214,7 +190,7 @@ public class StreamManager {
         }
     }
 
-    private void addFragmentToPendingQueue(LiveSoundFragment fragment, StreamState state) {
+    private void addFragmentToPendingQueue(LiveSoundFragment fragment) {
         Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = fragment.getSegments();
         if (segments == null || segments.isEmpty()) {
             LOGGER.warn("Fragment has no segments: " + fragment.getSoundFragmentId());
@@ -248,73 +224,67 @@ public class StreamManager {
             }
 
             if (!bitrateSlot.isEmpty()) {
-                state.pendingQueue.offer(bitrateSlot);
-                long seq = bitrateSlot.values().iterator().next().getSequence();
-                LOGGER.info("Added segment seq=" + seq + " to pendingQueue, new size: " + state.pendingQueue.size());
+                streamState.pendingQueue.offer(bitrateSlot);
+                //long seq = bitrateSlot.values().iterator().next().getSequence();
+                //LOGGER.info("Added segment seq=" + seq + " to pendingQueue, new size: " + streamState.pendingQueue.size());
             }
         }
     }
 
-    // Note: Scheduled methods removed since StreamManager is now @Dependent
-    public void slideWindow() {
-        executorService.submit(() -> {
-            for (Map.Entry<String, StreamState> entry : streamStates.entrySet()) {
-                String brand = entry.getKey();
-                StreamState state = entry.getValue();
-                slideWindowForBrand(brand, state);
-            }
-        });
-    }
-
-    private void slideWindowForBrand(String brand, StreamState state) {
-        if (state.liveSegments.isEmpty()) {
+    private void slideWindow() {
+        if (streamState.liveSegments.isEmpty()) {
             return;
         }
         
-        while (state.liveSegments.size() > hlsConfig.getMaxVisibleSegments()) {
-            state.liveSegments.pollFirstEntry();
+        while (streamState.liveSegments.size() > hlsConfig.getMaxVisibleSegments()) {
+            streamState.liveSegments.pollFirstEntry();
         }
     }
 
-    public void initializeStream(String brand) {
-        String brandKey = brand.toLowerCase();
-        streamStates.computeIfAbsent(brandKey, k -> {
-            StreamState state = new StreamState();
-            LOGGER.info("Initialized stream for brand: " + brand);
+    public void initializeStream() {
+        LOGGER.info("Initializing stream for brand: " + brand);
 
-            segmentFeederTimer.setDurationSec(hlsConfig.getSegmentDuration());
+        segmentFeederTimer.setDurationSec(hlsConfig.getSegmentDuration());
 
-            Cancellable feeder = segmentFeederTimer.getTicker().subscribe().with(
-                    timestamp -> executorService.submit(this::feedSegments),
-                    error -> LOGGER.error("Feeder subscription error for " + brand + ": " + error.getMessage(), error)
-            );
+        feederSubscription = segmentFeederTimer.getTicker().subscribe().with(
+                timestamp -> executorService.submit(this::feedSegments),
+                error -> LOGGER.error("Feeder subscription error for " + brand + ": " + error.getMessage(), error)
+        );
 
-            Cancellable slider = sliderTimer.getTicker().subscribe().with(
-                    timestamp -> executorService.submit(this::slideWindow),
-                    error -> LOGGER.error("Slider subscription error for " + brand + ": " + error.getMessage(), error)
-            );
-
-            timerSubscriptions.put(brandKey + "_feeder", feeder);
-            timerSubscriptions.put(brandKey + "_slider", slider);
-
-            return state;
-        });
+        sliderSubscription = sliderTimer.getTicker().subscribe().with(
+                timestamp -> executorService.submit(this::slideWindow),
+                error -> LOGGER.error("Slider subscription error for " + brand + ": " + error.getMessage(), error)
+        );
     }
 
-    public void shutdownStream(String brand) {
-        String brandKey = brand.toLowerCase();
-        StreamState state = streamStates.remove(brandKey);
-        if (state != null) {
-            // Cancel timer subscriptions
-            Cancellable feeder = timerSubscriptions.remove(brandKey + "_feeder");
-            Cancellable slider = timerSubscriptions.remove(brandKey + "_slider");
-            if (feeder != null) feeder.cancel();
-            if (slider != null) slider.cancel();
-
-            state.liveSegments.clear();
-            state.pendingQueue.clear();
-            LOGGER.info("Shutdown stream for brand: " + brand);
+    public void shutdown() {
+        LOGGER.info("Shutting down stream for brand: " + brand);
+        
+        // Cancel timer subscriptions
+        if (feederSubscription != null) {
+            feederSubscription.cancel();
         }
+        if (sliderSubscription != null) {
+            sliderSubscription.cancel();
+        }
+        
+        // Shutdown executor service
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOGGER.error("Executor service did not terminate for brand: " + brand);
+                }
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        streamState.liveSegments.clear();
+        streamState.pendingQueue.clear();
+        LOGGER.info("Stream shutdown complete for brand: " + brand);
     }
 
     private String getDefaultPlaylist() {

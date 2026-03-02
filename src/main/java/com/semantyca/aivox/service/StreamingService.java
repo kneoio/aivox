@@ -83,7 +83,7 @@ public class StreamingService {
     public Uni<Boolean> addFragment(String brand, LiveSoundFragment fragment, int priority) {
         return getStation(brand)
                 .onItem().transform(bundle -> 
-                    bundle.getPlaylistManager().addFragment(brand, fragment, priority)
+                    bundle.getPlaylistManager().addFragment(fragment, priority)
                 )
                 .onItem().transform(uni -> {
                     // This is a Uni<Uni<Boolean>>, so we need to flatten it

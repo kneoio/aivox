@@ -3,9 +3,7 @@ package com.semantyca.aivox.streaming;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
-import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.BrandService;
-import com.semantyca.aivox.service.RadioDJProcessor;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
@@ -86,16 +84,16 @@ public class RadioStationPool {
 
                     pool.computeIfAbsent(brand, key -> {
                         LOGGER.info("Creating new bundle for brand: " + key);
-                        PlaylistManager playlistManager = new PlaylistManager(aivoxConfig, waitingAudioProvider,
+                        PlaylistManager playlistManager = new PlaylistManager(key, aivoxConfig, waitingAudioProvider,
                                 soundFragmentBrandService, brandService, fileHandler, segmentationService);
-                        StreamManager streamManager = new StreamManager(playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
-                        streamManager.initializeStream(key);
+                        StreamManager streamManager = new StreamManager(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
+                        streamManager.initializeStream();
                         return new RadioStationBundle(key, streamManager, playlistManager);
                     });
 
                     RadioStationBundle bundle = pool.get(brand);
 
-                    return bundle.getPlaylistManager().initializeBrand(brand)
+                    return bundle.getPlaylistManager().initialize()
                             .replaceWith(bundle);
                 })
                 .onFailure().invoke(failure ->
