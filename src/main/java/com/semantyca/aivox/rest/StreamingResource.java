@@ -84,7 +84,7 @@ public class StreamingResource {
                         rc.response().setStatusCode(404).end("Segment not found");
                         return;
                     }
-                    LOGGER.info("Serving segment: " + segmentFile + ", size: " + segmentData.length + " bytes");
+                    //LOGGER.info("Serving segment: " + segmentFile + ", size: " + segmentData.length + " bytes");
                     rc.response()
                         .putHeader("Content-Type", "video/MP2T")
                         .putHeader("Cache-Control", "no-cache")

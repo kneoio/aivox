@@ -82,7 +82,7 @@ public class RadioStationPool {
                         return Uni.createFrom().item(existingBundle);
                     }
 
-                    pool.computeIfAbsent(brand, key -> {
+                    RadioStationBundle bundle = pool.computeIfAbsent(brand, key -> {
                         LOGGER.info("Creating new bundle for brand: " + key);
                         PlaylistManager playlistManager = new PlaylistManager(key, aivoxConfig, waitingAudioProvider,
                                 soundFragmentBrandService, brandService, fileHandler, segmentationService);
@@ -91,10 +91,8 @@ public class RadioStationPool {
                         return new RadioStationBundle(key, streamManager, playlistManager);
                     });
 
-                    RadioStationBundle bundle = pool.get(brand);
-
-                    return bundle.getPlaylistManager().initialize()
-                            .replaceWith(bundle);
+                    LOGGER.info("Station bundle ready for brand: " + brand + " (lazy initialization will occur on first use)");
+                    return Uni.createFrom().item(bundle);
                 })
                 .onFailure().invoke(failure ->
                         LOGGER.error("Failed to initialize station " + brandName + ": " + failure.getMessage(), failure)

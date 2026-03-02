@@ -25,4 +25,16 @@ public class LiveSoundFragment {
         this.metadata = metadata;
         this.segments = new ConcurrentHashMap<>();
     }
+
+    public String toString() {
+        return String.format("%s|%s",
+                safeLog(metadata.getArtist()),
+                safeLog(metadata.getTitle()));
+    }
+
+    private String safeLog(String value) {
+        if (value == null || value.isBlank()) return "-";
+        return value.length() <= 10 ? value : value.substring(0, 10) + "…";
+    }
+
 }

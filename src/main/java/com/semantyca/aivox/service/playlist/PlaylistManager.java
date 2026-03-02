@@ -6,7 +6,6 @@ import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
-import com.semantyca.aivox.streaming.HlsSegment;
 import com.semantyca.aivox.streaming.LiveSoundFragment;
 import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.aivox.streaming.WaitingAudioProvider;
@@ -16,15 +15,12 @@ import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import org.jboss.logging.Logger;
 
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -35,61 +31,137 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PlaylistManager {
+
     private static final Logger LOGGER = Logger.getLogger(PlaylistManager.class);
-    private static final int SELF_MANAGING_INTERVAL_SECONDS = 100;
+    private static final int SELF_MANAGING_INTERVAL_SECONDS = 30;
     private static final int REGULAR_BUFFER_MAX = 2;
     private static final int TRIGGER_SELF_MANAGING = 2;
     private static final int PROCESSED_QUEUE_MAX_SIZE = 2;
     private static final long STARVING_FEED_COOLDOWN_MILLIS = 20_000L;
-    private static final int HIGH_PRIORITY_THRESHOLD = 12;
+
     private final ReadWriteLock slicedFragmentsLock = new ReentrantReadWriteLock();
     private final PlaylistState playlistState = new PlaylistState();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private ScheduledExecutorService scheduler;
     private volatile long lastStarvingFeedTime = 0;
+    private volatile boolean initialized = false;
+    private volatile boolean initializing = false;
 
     private final String brand;
-    private final AivoxConfig aivoxConfig;
     private final WaitingAudioProvider waitingAudioProvider;
     private final SoundFragmentBrandService soundFragmentBrandService;
     private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
+    private final Path tempDir;
     private UUID brandId;
 
-    public PlaylistManager(String brand, AivoxConfig aivoxConfig, WaitingAudioProvider waitingAudioProvider,
+
+    public PlaylistManager(String brand, AivoxConfig aivoxConfig,
+                           WaitingAudioProvider waitingAudioProvider,
                            SoundFragmentBrandService soundFragmentBrandService,
-                           BrandService brandService, SoundFragmentFileHandler fileHandler,
+                           BrandService brandService,
+                           SoundFragmentFileHandler fileHandler,
                            AudioSegmentationService segmentationService) {
         this.brand = brand;
-        this.aivoxConfig = aivoxConfig;
         this.waitingAudioProvider = waitingAudioProvider;
         this.soundFragmentBrandService = soundFragmentBrandService;
         this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
 
-        // Start self-managing scheduler
+        this.tempDir = Paths.get(aivoxConfig.path().temp());
+        try {
+            Files.createDirectories(tempDir);
+            LOGGER.infof("%s Temp directory initialized: %s", logPrefix(), tempDir);
+        } catch (Exception e) {
+            LOGGER.errorf(e, "%s Failed to create temp directory: %s", logPrefix(), e.getMessage());
+            throw new RuntimeException("Cannot initialize temp directory", e);
+        }
+    }
+
+    private Uni<Void> ensureInitialized() {
+        if (initialized) {
+            return Uni.createFrom().voidItem();
+        }
+        
+        if (initializing) {
+            LOGGER.debugf("%s Already initializing, waiting...", logPrefix());
+            return Uni.createFrom().voidItem();
+        }
+        
+        initializing = true;
+        return initialize();
+    }
+
+    public Uni<Void> initialize() {
+        LOGGER.infof("%s ========== INITIALIZING PLAYLIST MANAGER ==========", logPrefix());
+
+        return resolveBrandId()
+                .onItem().invoke(() -> {
+                    LOGGER.infof("%s Brand ID resolved successfully, starting scheduler", logPrefix());
+                    startScheduler();
+                })
+                .onItem().transformToUni(v -> {
+                    LOGGER.infof("%s Initializing waiting audio provider", logPrefix());
+                    waitingAudioProvider.initialize();
+
+                    List<Uni<LiveSoundFragment>> unis = new ArrayList<>();
+                    if (waitingAudioProvider.isWaitingAudioAvailable()) {
+                        LOGGER.infof("%s Waiting audio is available, creating fragment", logPrefix());
+                        unis.add(waitingAudioProvider.createWaitingFragment());
+                    } else {
+                        LOGGER.warnf("%s Waiting audio is NOT available", logPrefix());
+                    }
+
+                    if (unis.isEmpty()) {
+                        LOGGER.warnf("%s No waiting fragments available, but marking as initialized", logPrefix());
+                        initialized = true;
+                        initializing = false;
+                        LOGGER.infof("%s ========== INITIALIZATION COMPLETE: 0 waiting fragments ==========", logPrefix());
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    return Uni.join().all(unis).andFailFast()
+                            .onItem().invoke(fragments -> {
+                                fragments.stream()
+                                        .filter(Objects::nonNull)
+                                        .forEach(playlistState.regularQueue::offer);
+
+                                initialized = true;
+                                initializing = false;
+                                LOGGER.infof("%s ========== INITIALIZATION COMPLETE: %d waiting fragment(s) ready ==========",
+                                        logPrefix(), playlistState.regularQueue.size());
+                            })
+                            .replaceWithVoid();
+                })
+                .onFailure().invoke(e -> {
+                    initializing = false;
+                    LOGGER.errorf(e, "%s ========== INITIALIZATION FAILED ==========", logPrefix());
+                });
+    }
+
+    private void startScheduler() {
+        scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 if (playlistState.regularQueue.size() <= TRIGGER_SELF_MANAGING) {
-                    if (Math.random() < 0.5) {
-                        feedFragments(1, false);
-                    } else {
-                        feedFragments(2, false);
-                    }
+                    int count = Math.random() < 0.5 ? 1 : 2;
+                    LOGGER.infof("%s Self-managing: feeding %d frag(s)", logPrefix(), count);
+                    feedFragments(count, false);
                 }
             } catch (Exception e) {
-                LOGGER.error("Error during maintenance: " + e.getMessage(), e);
+                LOGGER.errorf(e, "%s Error during maintenance", logPrefix());
             }
-        }, 30, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     private void feedFragments(int maxQuantity, boolean useCooldown) {
         if (useCooldown) {
             long now = System.currentTimeMillis();
-            if (now - lastStarvingFeedTime < STARVING_FEED_COOLDOWN_MILLIS) {
-                LOGGER.debug("Station starving but cooldown active, waiting " +
-                        (STARVING_FEED_COOLDOWN_MILLIS - (now - lastStarvingFeedTime)) + " ms");
+            long elapsed = now - lastStarvingFeedTime;
+            if (elapsed < STARVING_FEED_COOLDOWN_MILLIS) {
+                LOGGER.debugf("%s Cooldown active, waiting %d ms",
+                        logPrefix(), STARVING_FEED_COOLDOWN_MILLIS - elapsed);
                 return;
             }
             lastStarvingFeedTime = now;
@@ -97,14 +169,14 @@ public class PlaylistManager {
 
         int remaining = Math.max(0, REGULAR_BUFFER_MAX - playlistState.regularQueue.size());
         if (remaining == 0) {
-            LOGGER.debug("Skipping addFragments - regular buffer at cap " + REGULAR_BUFFER_MAX + " for brand " + brand);
+            LOGGER.debugf("%s Regular buffer at cap (%d), skipping feed",
+                    logPrefix(), REGULAR_BUFFER_MAX);
             return;
         }
 
         int quantityToFetch = Math.min(remaining, maxQuantity);
-        LOGGER.info("Feeding " + quantityToFetch + " fragments for brand " + brand);
+        LOGGER.infof("%s Feeding %d fragment(s)", logPrefix(), quantityToFetch);
 
-        // Get excluded IDs from current queues - thread-safe collection
         List<UUID> excludedIds = new ArrayList<>();
         excludedIds.addAll(playlistState.regularQueue.stream()
                 .map(LiveSoundFragment::getSoundFragmentId)
@@ -121,282 +193,247 @@ public class PlaylistManager {
             slicedFragmentsLock.readLock().unlock();
         }
 
-        // Fetch songs from database
         if (brandId == null) {
-            LOGGER.warn("Cannot resolve brand ID for: " + brand);
+            LOGGER.warnf("%s Cannot resolve brand ID for slug: %s", logPrefix(), brand);
             return;
         }
 
+        LOGGER.infof("%s Calling getBrandSongs for brandId: %s", logPrefix(), brandId);
+        
         soundFragmentBrandService.getBrandSongs(brandId, PlaylistItemType.SONG)
-                .onItem().transformToMulti(soundFragments -> Multi.createFrom().iterable(soundFragments))
-                .onItem().transform(fragment -> {
-                    // Filter out excluded IDs
-                    if (excludedIds.contains(fragment.getId())) {
-                        return null;
-                    }
-                    return fragment;
+                .ifNoItem().after(Duration.ofSeconds(60)).fail()
+                .onFailure().invoke(e -> {
+                    LOGGER.errorf("%s Database query timeout - getBrandSongs() took >60s. Check database performance!", logPrefix());
                 })
-                .filter(Objects::nonNull)
+                .onFailure().recoverWithItem(java.util.Collections.emptyList())
+                .onItem().invoke(songs -> {
+                    if (songs == null) {
+                        LOGGER.warnf("%s Retrieved NULL songs list from database", logPrefix());
+                    } else {
+                        LOGGER.infof("%s Retrieved %d songs from database", logPrefix(), songs.size());
+                    }
+                })
+                .onItem().transform(songs -> {
+                    List<SoundFragment> available = songs.stream()
+                            .filter(f -> !excludedIds.contains(f.getId()))
+                            .collect(java.util.stream.Collectors.toList());
+                    LOGGER.infof("%s After filtering: %d available songs", logPrefix(), available.size());
+                    java.util.Collections.shuffle(available);
+                    return available;
+                })
+                .onItem().transformToMulti(Multi.createFrom()::iterable)
                 .select().first(quantityToFetch)
                 .onItem().call(fragment -> {
+                    LOGGER.infof("%s Processing song: %s - %s", logPrefix(), fragment.getTitle(), fragment.getArtist());
+                    return Uni.createFrom().voidItem();
+                })
+                .onItem().transformToUniAndMerge(fragment -> {
                     try {
                         assert fragment != null;
                         return addFragmentToQueue(fragment);
                     } catch (Exception e) {
-                        LOGGER.warn("Skipping fragment due to error: " + e.getMessage());
+                        LOGGER.warnf("%s Skipping fragment %s: %s",
+                                logPrefix(), fragment.getId(), e.getMessage());
                         return Uni.createFrom().item(false);
                     }
                 })
                 .collect().asList()
                 .subscribe().with(
-                        processedItems -> {
-                            LOGGER.info("Successfully processed and added " + processedItems.size() + " fragments for brand " + brand);
+                        processed -> {
+                            long successCount = processed.stream()
+                                    .filter(b -> b != null && b)
+                                    .count();
+                            LOGGER.infof("%s Completed: %d/%d fragments added successfully",
+                                    logPrefix(), successCount, processed.size());
                         },
-                        error -> {
-                            LOGGER.error("Error during the processing of fragments for brand " + brand + ": " + error.getMessage(), error);
-                        }
+                        error -> LOGGER.errorf(error, "%s Processing failed", logPrefix())
                 );
     }
 
     private Uni<Void> resolveBrandId() {
         if (brandId != null) {
+            LOGGER.debugf("%s Brand ID already resolved: %s", logPrefix(), brandId);
             return Uni.createFrom().voidItem();
         }
+        
+        LOGGER.infof("%s Resolving brand ID for slug: %s", logPrefix(), brand);
         return brandService.getBySlugName(brand)
                 .onItem().invoke(brandEntity -> {
+                    if (brandEntity == null) {
+                        LOGGER.errorf("%s Brand entity is null for slug: %s", logPrefix(), brand);
+                        throw new IllegalStateException("Brand not found: " + brand);
+                    }
                     brandId = brandEntity.getId();
-                    LOGGER.info("Resolved brand ID for: " + brand);
+                    LOGGER.infof("%s Brand ID resolved successfully: %s", logPrefix(), brandId);
                 })
-                .onFailure().invoke(e -> 
-                    LOGGER.error("Failed to resolve brand ID for: " + brand + ", error: " + e.getMessage())
-                )
+                .onFailure().transform(e -> {
+                    LOGGER.errorf(e, "%s CRITICAL: Failed to resolve brand ID for slug: %s", logPrefix(), brand);
+                    return new RuntimeException("Cannot resolve brand ID for: " + brand, e);
+                })
                 .replaceWithVoid();
     }
 
     private Uni<Boolean> addFragmentToQueue(SoundFragment soundFragment) {
         LiveSoundFragment liveSoundFragment = new LiveSoundFragment();
-        SongMetadata songMetadata = new SongMetadata(soundFragment.getId(), soundFragment.getTitle(), soundFragment.getArtist());
+        SongMetadata songMetadata = new SongMetadata(
+                soundFragment.getId(),
+                soundFragment.getTitle(),
+                soundFragment.getArtist()
+        );
         liveSoundFragment.setSoundFragmentId(soundFragment.getId());
         liveSoundFragment.setMetadata(songMetadata);
 
-        // Materialize file from storage and create HLS segments using FFmpeg
+        LOGGER.infof("%s Starting to process fragment: %s - %s", logPrefix(), soundFragment.getTitle(), soundFragment.getArtist());
+        
         return fileHandler.getFirstFile(soundFragment.getId())
+                .ifNoItem().after(Duration.ofSeconds(30)).fail()
                 .onFailure().recoverWithUni(ex -> {
-                    LOGGER.warn("Failed to retrieve file for fragment " + soundFragment.getId() + ": " + ex.getMessage());
+                    LOGGER.warnf("%s Failed to retrieve file metadata for fragment %s: %s", logPrefix(), soundFragment.getId(), ex.getMessage());
                     return Uni.createFrom().item((FileMetadata) null);
+                })
+                .onItem().invoke(fileMetadata -> {
+                    if (fileMetadata != null) {
+                        LOGGER.infof("%s Retrieved file metadata: %s (size: %d bytes)", 
+                                logPrefix(), fileMetadata.getFileOriginalName(), 
+                                fileMetadata.getContentLength() != null ? fileMetadata.getContentLength() : 0);
+                    }
                 })
                 .onItem().transformToUni(fileMetadata -> {
                     if (fileMetadata == null) {
-                        LOGGER.warn("No file found for fragment: " + soundFragment.getId());
+                        LOGGER.warnf("%s No file found for fragment: %s", logPrefix(), soundFragment.getId());
                         return Uni.createFrom().item(false);
                     }
 
-                    return materializeAndSegment(fileMetadata, songMetadata)
-                            .onItem().transformToUni(segments -> {
-                                if (segments.isEmpty()) {
-                                    LOGGER.warn("No segments created for fragment: " + soundFragment.getId());
-                                    return Uni.createFrom().item(false);
-                                }
+                    LOGGER.infof("%s Starting materialization for: %s", logPrefix(), fileMetadata.getFileOriginalName());
+                    
+                    return fileMetadata.materializeFileStream(tempDir.toString())
+                            .ifNoItem().after(Duration.ofMinutes(5)).fail()
+                            .onFailure().invoke(e -> {
+                                LOGGER.errorf(e, "%s Materialization FAILED for %s: %s", 
+                                        logPrefix(), fileMetadata.getFileOriginalName(), e.getMessage());
+                            })
+                            .onItem().invoke(tempFile -> {
+                                LOGGER.infof("%s Materialization complete: %s", logPrefix(), tempFile);
+                            })
+                            .onItem().transformToUni(tempFile -> {
+                                LOGGER.infof("%s Starting segmentation for: %s", logPrefix(), songMetadata.getTitle());
+                                long[] bitrates = {128000L, 64000L};
+                                return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
+                                        .ifNoItem().after(Duration.ofMinutes(3)).fail()
+                                        .onFailure().invoke(e -> {
+                                            LOGGER.errorf(e, "%s Segmentation FAILED for %s: %s", 
+                                                    logPrefix(), songMetadata.getTitle(), e.getMessage());
+                                        })
+                                        .onItem().invoke(segments -> {
+                                            try {
+                                                Files.deleteIfExists(tempFile);
+                                            } catch (Exception e) {
+                                                LOGGER.warnf("%s Failed to delete temp file: %s", logPrefix(), tempFile);
+                                            }
+                                        })
+                                        .onItem().transformToUni(segments -> {
+                                            if (segments.isEmpty()) {
+                                                LOGGER.warnf("%s No segments created for fragment: %s", logPrefix(), soundFragment.getId());
+                                                return Uni.createFrom().item(false);
+                                            }
 
-                                liveSoundFragment.setSegments(segments);
-                                playlistState.regularQueue.add(liveSoundFragment);
-                                LOGGER.info("Added fragment from database for brand " + brand + ": " + soundFragment.getTitle());
-                                return Uni.createFrom().item(true);
+                                            liveSoundFragment.setSegments(segments);
+                                            playlistState.regularQueue.add(liveSoundFragment);
+
+                                            LOGGER.infof("%s ✓ Successfully added fragment to queue: %s - %s (%d segments)", 
+                                                    logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(), 
+                                                    segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                                            return Uni.createFrom().item(true);
+                                        });
+                            })
+                            .onFailure().transform(e -> {
+                                LOGGER.errorf(e, "%s Failed to materialize/segment file: %s",
+                                        logPrefix(), fileMetadata.getFileOriginalName());
+                                return new RuntimeException("Materialization failed", e);
                             });
                 });
-    }
-
-    private Uni<Map<Long, ConcurrentLinkedQueue<HlsSegment>>> materializeAndSegment(FileMetadata metadata, SongMetadata songMetadata) {
-        // Materialize file to temp directory
-        InputStream inputStream = metadata.getInputStream();
-        if (inputStream == null) {
-            LOGGER.warn("No input stream in file metadata: " + metadata.getFileOriginalName());
-            return Uni.createFrom().item(new HashMap<>());
-        }
-
-        return Uni.createFrom().item(() -> {
-                    try {
-                        // Create temp file
-                        String extension = getFileExtension(metadata.getMimeType());
-                        Path tempDir = java.nio.file.Paths.get(aivoxConfig.path().temp());
-                        Files.createDirectories(tempDir);
-                        Path tempFile = Files.createTempFile(tempDir, "audio_", extension);
-
-                        // Write stream to temp file
-                        Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
-                        inputStream.close();
-
-                        LOGGER.debug("Materialized audio file to: " + tempFile);
-                        return tempFile;
-                    } catch (Exception e) {
-                        LOGGER.error("Failed to materialize file: " + metadata.getFileOriginalName(), e);
-                        throw new RuntimeException(e);
-                    }
-                })
-                .chain(tempFile -> {
-                    // Use FFmpeg to create proper HLS segments
-                    long[] bitrates = {128000L, 64000L};
-                    return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
-                            .onItem().invoke(() -> {
-                                // Clean up temp file after segmentation
-                                try {
-                                    Files.deleteIfExists(tempFile);
-                                } catch (Exception e) {
-                                    LOGGER.warn("Failed to delete temp file: " + tempFile, e);
-                                }
-                            });
-                });
-    }
-
-    private String getFileExtension(String mimeType) {
-        if (mimeType == null) {
-            return ".tmp";
-        }
-        return switch (mimeType.toLowerCase()) {
-            case "audio/mpeg", "audio/mp3" -> ".mp3";
-            case "audio/wav", "audio/wave", "audio/vnd.wave" -> ".wav";
-            case "audio/flac", "audio/x-flac" -> ".flac";
-            case "audio/aac" -> ".aac";
-            case "audio/ogg" -> ".ogg";
-            case "audio/m4a" -> ".m4a";
-            default -> ".tmp";
-        };
     }
 
     public LiveSoundFragment getNextLiveFragment() {
-        LOGGER.info("getNextLiveFragment called for brand: " + brand);
-        LiveSoundFragment fragment = getNextFragment();
-        LOGGER.info("getNextFragment returned: " + (fragment != null ? "fragment with ID " + fragment.getSoundFragmentId() : "NULL"));
-        return fragment;
-    }
+        if (!initialized) {
+            LOGGER.infof("%s Not initialized, triggering lazy initialization", logPrefix());
+            ensureInitialized().await().indefinitely();
+        }
+        
+        LOGGER.debugf("%s Queues: prioritized=%d, regular=%d",
+                logPrefix(),
+                playlistState.prioritizedQueue.size(),
+                playlistState.regularQueue.size());
 
-    private LiveSoundFragment getNextFragment() {
-        LOGGER.info("getNextFragment for brand: " + brand + ", prioritizedQueue: " + playlistState.prioritizedQueue.size() + ", regularQueue: " + playlistState.regularQueue.size());
-
-        // Check prioritized queue first
         if (!playlistState.prioritizedQueue.isEmpty()) {
-            LOGGER.info("Returning fragment from prioritizedQueue");
-            LiveSoundFragment nextFragment = playlistState.prioritizedQueue.poll();
-            moveFragmentToProcessedList(nextFragment);
-            return nextFragment;
+            LiveSoundFragment next = playlistState.prioritizedQueue.poll();
+            moveFragmentToProcessedList(next);
+            LOGGER.debugf("%s Returned prioritized: %s", logPrefix(), next.getMetadata());
+            return next;
         }
 
-        // Then check regular queue
         if (!playlistState.regularQueue.isEmpty()) {
-            LOGGER.info("Returning fragment from regularQueue");
-            LiveSoundFragment nextFragment = playlistState.regularQueue.poll();
-            moveFragmentToProcessedList(nextFragment);
-            return nextFragment;
+            LiveSoundFragment next = playlistState.regularQueue.poll();
+            moveFragmentToProcessedList(next);
+            LOGGER.debugf("%s Returned regular: %s", logPrefix(), next.getMetadata());
+            return next;
         }
 
-        LOGGER.warn("Both queues are empty for brand: " + brand + ", activating waiting state");
-
-        // Trigger feeding for next cycle
+        LOGGER.warnf("%s Queues empty, activating waiting audio", logPrefix());
         feedFragments(1, true);
 
-        // Return waiting audio loop
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
-            LOGGER.debug("Returning waiting audio loop for brand: " + brand);
             return waitingAudioProvider.createWaitingFragment()
-                    .await().atMost(java.time.Duration.ofSeconds(5));
+                    .await().atMost(Duration.ofSeconds(5));
         } else {
-            LOGGER.error("Waiting audio not available for brand: " + brand);
             return null;
         }
     }
 
-    private void moveFragmentToProcessedList(LiveSoundFragment fragmentToPlay) {
-        if (fragmentToPlay != null) {
-            slicedFragmentsLock.writeLock().lock();
-            try {
-                playlistState.obtainedByHlsPlaylist.add(fragmentToPlay);
+    private void moveFragmentToProcessedList(LiveSoundFragment fragment) {
+        if (fragment == null) return;
 
-                // Add to MP3 fragments list
-                playlistState.fragmentsForMp3.add(fragmentToPlay);
-                while (playlistState.fragmentsForMp3.size() > 2) {
-                    playlistState.fragmentsForMp3.removeFirst();
-                }
-
-                LOGGER.info("Queued fragment for brand=" + brand + " id=" + fragmentToPlay.getSoundFragmentId().toString());
-                if (playlistState.obtainedByHlsPlaylist.size() > PROCESSED_QUEUE_MAX_SIZE) {
-                    LiveSoundFragment removed = playlistState.obtainedByHlsPlaylist.poll();
-                    LOGGER.debug("Removed oldest fragment from processed queue: " + removed.getMetadata());
-                }
-            } finally {
-                slicedFragmentsLock.writeLock().unlock();
-            }
-        }
-    }
-
-    public Uni<Boolean> addFragment(LiveSoundFragment fragment, int priority) {
+        slicedFragmentsLock.writeLock().lock();
         try {
-            fragment.setPriority(priority);
+            playlistState.obtainedByHlsPlaylist.add(fragment);
+            playlistState.fragmentsForMp3.add(fragment);
 
-            if (priority <= HIGH_PRIORITY_THRESHOLD) {
-                // High priority - add to prioritized queue
-                playlistState.prioritizedQueue.offer(fragment);
-                LOGGER.info("Added prioritized fragment for brand " + brand);
-            } else {
-                // Regular priority - add to regular queue
-                if (playlistState.regularQueue.size() >= REGULAR_BUFFER_MAX) {
-                    LOGGER.debug("Refusing to add regular fragment; buffer full (" + REGULAR_BUFFER_MAX + "). Brand: " + brand);
-                    return Uni.createFrom().item(false);
-                }
-                playlistState.regularQueue.offer(fragment);
-                LOGGER.info("Added regular fragment for brand " + brand);
+            while (playlistState.fragmentsForMp3.size() > 2) {
+                playlistState.fragmentsForMp3.removeFirst();
             }
 
-            return Uni.createFrom().item(true);
-        } catch (Exception e) {
-            LOGGER.error("Error adding fragment for brand " + brand + ": " + e.getMessage(), e);
-            return Uni.createFrom().item(false);
+            LOGGER.debugf("%s Queued fragment: %s (processed: %d)",
+                    logPrefix(),fragment.getMetadata(),
+                    playlistState.obtainedByHlsPlaylist.size());
+
+            if (playlistState.obtainedByHlsPlaylist.size() > PROCESSED_QUEUE_MAX_SIZE) {
+                LiveSoundFragment removed = playlistState.obtainedByHlsPlaylist.poll();
+                LOGGER.tracef("%s Trimmed processed queue, removed: %s",logPrefix(), removed.getMetadata());
+            }
+        } finally {
+            slicedFragmentsLock.writeLock().unlock();
         }
     }
 
-    public Uni<Void> initialize() {
-        LOGGER.info("Initializing playlist for brand: " + brand);
-        
-        return resolveBrandId()
-                .onItem().transformToUni(v -> {
-                    // Initialize waiting audio provider
-                    waitingAudioProvider.initialize();
-                    
-                    List<Uni<LiveSoundFragment>> unis = new ArrayList<>();
-                    if (waitingAudioProvider.isWaitingAudioAvailable()) {
-                        unis.add(waitingAudioProvider.createWaitingFragment());
-                    }
 
-                    if (unis.isEmpty()) {
-                        return Uni.createFrom().voidItem();
-                    }
-
-                    return Uni.join().all(unis).andFailFast()
-                            .onItem().invoke(fragments -> {
-                                fragments.forEach(fragment -> {
-                                    if (fragment != null) {
-                                        playlistState.regularQueue.offer(fragment);
-                                    }
-                                });
-                                LOGGER.info("Brand " + brand + " initialized with " + playlistState.regularQueue.size() + " waiting audio fragments. Station ready to stream.");
-                            })
-                            .replaceWithVoid();
-                });
-    }
 
     public void shutdown() {
-        LOGGER.info("Shutting down PlaylistManager for brand: " + brand);
+        LOGGER.infof("%s Shutting down PlaylistManager", logPrefix());
 
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
+        if (scheduler != null) {
+            scheduler.shutdown();
+            try {
                 if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    LOGGER.error("Scheduler did not terminate for brand: " + brand);
+                    scheduler.shutdownNow();
+                    if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                        LOGGER.errorf("%s Scheduler did not terminate gracefully", logPrefix());
+                    }
                 }
+            } catch (InterruptedException e) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+                LOGGER.warnf("%s Shutdown interrupted", logPrefix());
             }
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
         }
 
         slicedFragmentsLock.writeLock().lock();
@@ -410,14 +447,10 @@ public class PlaylistManager {
         playlistState.regularQueue.clear();
         playlistState.prioritizedQueue.clear();
 
-        LOGGER.info("PlaylistManager for " + brand + " has been shut down. All queues cleared.");
+        LOGGER.infof("%s Shutdown complete. All queues cleared.", logPrefix());
     }
 
-    // Inner class to maintain brand-specific state
-    private static class PlaylistState {
-        final LinkedList<LiveSoundFragment> obtainedByHlsPlaylist = new LinkedList<>();
-        final ConcurrentLinkedQueue<LiveSoundFragment> regularQueue = new ConcurrentLinkedQueue<>();
-        final ConcurrentLinkedQueue<LiveSoundFragment> prioritizedQueue = new ConcurrentLinkedQueue<>();
-        final LinkedList<LiveSoundFragment> fragmentsForMp3 = new LinkedList<>();
+    private String logPrefix() {
+        return "[" + brand + "]";
     }
 }
