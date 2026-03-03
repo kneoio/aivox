@@ -1,29 +1,27 @@
 package com.semantyca.aivox.tts;
 
-import com.semantyca.aivox.model.TtsDTO;
+import com.semantyca.aivox.dto.TtsDTO;
+import com.semantyca.aivox.model.cnst.TTSEngineType;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 
 @ApplicationScoped
 public class ElevenLabsTtsEngine implements TtsEngine {
     
     private static final Logger LOGGER = Logger.getLogger(ElevenLabsTtsEngine.class);
-    private static final TtsProvider PROVIDER = TtsProvider.ELEVENLABS;
+    private static final TTSEngineType PROVIDER = TTSEngineType.ELEVENLABS;
     
     @ConfigProperty(name = "tts.elevenlabs.api-key")
     String apiKey;

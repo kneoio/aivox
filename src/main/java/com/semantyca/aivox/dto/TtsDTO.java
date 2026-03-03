@@ -1,4 +1,4 @@
-package com.semantyca.aivox.model;
+package com.semantyca.aivox.dto;
 
 import lombok.Data;
 

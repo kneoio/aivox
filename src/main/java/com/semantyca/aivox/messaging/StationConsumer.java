@@ -1,6 +1,6 @@
 package com.semantyca.aivox.messaging;
 
-import com.semantyca.aivox.model.LiveRadioStationDTO;
+import com.semantyca.aivox.dto.LiveRadioStationDTO;
 import com.semantyca.aivox.service.RadioDJProcessor;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;

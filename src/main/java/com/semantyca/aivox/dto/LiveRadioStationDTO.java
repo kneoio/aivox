@@ -1,9 +1,8 @@
-package com.semantyca.aivox.model;
+package com.semantyca.aivox.dto;
 
 import lombok.Data;
-import java.time.LocalTime;
+
 import java.util.List;
-import java.util.UUID;
 
 @Data
 public class LiveRadioStationDTO {

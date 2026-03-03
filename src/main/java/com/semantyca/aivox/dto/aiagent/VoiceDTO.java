@@ -1,7 +1,7 @@
 package com.semantyca.aivox.dto.aiagent;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.semantyca.aivox.model.aiagent.TTSEngineType;
+import com.semantyca.aivox.model.cnst.TTSEngineType;
 import com.semantyca.core.model.cnst.LanguageTag;
 import lombok.Getter;
 import lombok.Setter;

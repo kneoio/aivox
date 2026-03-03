@@ -1,4 +1,4 @@
-package com.semantyca.aivox.model;
+package com.semantyca.aivox.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;

@@ -1,4 +1,4 @@
-package com.semantyca.aivox.model.aiagent;
+package com.semantyca.aivox.model.cnst;
 
 import lombok.Getter;
 

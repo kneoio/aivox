@@ -1,6 +1,6 @@
 package com.semantyca.aivox.tts;
 
-import com.semantyca.aivox.model.TtsDTO;
+import com.semantyca.aivox.dto.TtsDTO;
 import io.smallrye.mutiny.Uni;
 
 public interface TtsEngine {

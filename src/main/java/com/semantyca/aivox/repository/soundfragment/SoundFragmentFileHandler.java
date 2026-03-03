@@ -34,11 +34,6 @@ public class SoundFragmentFileHandler {
         return retrieveFileFromStorage(id, sql, Tuple.of(id));
     }
 
-    public Uni<FileMetadata> getFileBySlugName(UUID id, String slugName) {
-        String sql = "SELECT f.file_key FROM _files f WHERE f.parent_id = $1 AND f.slug_name = $2";
-        return retrieveFileFromStorage(id, sql, Tuple.of(id, slugName));
-    }
-
     private Uni<FileMetadata> retrieveFileFromStorage(UUID id, String sql, Tuple parameters) {
         return client.preparedQuery(sql)
                 .execute(parameters)
