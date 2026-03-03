@@ -74,7 +74,7 @@
     const statusText = document.getElementById('statusText');
 
     const params = new URLSearchParams(window.location.search);
-    srcInput.value = params.get('src') || 'http://localhost:38798/api/stream/lumisonic/stream.m3u8';
+    srcInput.value = params.get('src') || 'http://localhost:38798/stream/lumisonic/stream.m3u8';
 
     // ── Logging ────────────────────────────────────────────────────────────────
     function log(msg, type = 'info') {

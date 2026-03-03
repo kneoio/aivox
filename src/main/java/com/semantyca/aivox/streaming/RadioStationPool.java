@@ -2,6 +2,7 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
@@ -9,7 +10,6 @@ import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
-
 import io.vertx.mutiny.core.Vertx;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -18,9 +18,7 @@ import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Startup
@@ -28,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RadioStationPool {
     private static final Logger LOGGER = Logger.getLogger(RadioStationPool.class);
 
-    private final ConcurrentHashMap<String, RadioStationBundle> pool = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, RadioStream> pool = new ConcurrentHashMap<>();
 
     private final AivoxConfig aivoxConfig;
     private final HlsConfig hlsConfig;
@@ -61,76 +59,87 @@ public class RadioStationPool {
     @PostConstruct
     void initStationsFromWhitelist() {
         List<String> whitelist = aivoxConfig.stationWhitelist().orElse(List.of());
-        LOGGER.info("Initializing stations from whitelist: " + whitelist);
+        LOGGER.infof("%s Initializing stations from whitelist: %s", logPrefix(), whitelist);
         if (aivoxConfig.stationWhitelist().isPresent()) {
             for (String brandName : whitelist) {
                 initializeStation(brandName)
                         .subscribe()
                         .with(
-                                bundle -> LOGGER.info("Station initialized for brand: " + brandName),
-                                failure -> LOGGER.error("Failed to initialize station for brand: " + brandName, failure)
+                                bundle -> LOGGER.infof("%s Station initialized for brand: %s", logPrefix(brandName), brandName),
+                                failure -> LOGGER.errorf("%s Failed to initialize station for brand: %s", logPrefix(brandName), brandName, failure)
                         );
             }
         }
-
     }
 
-    public Uni<RadioStationBundle> initializeStation(String brandName) {
-        LOGGER.info("Attempting to initialize station for brand: " + brandName);
+    public Uni<RadioStream> initializeStation(String brandName) {
+        LOGGER.infof("%s Attempting to initialize station for brand: %s", logPrefix(brandName), brandName);
 
-        return Uni.createFrom().item(brandName)
+        return brandService.getBySlugName(brandName)
                 .onItem().transformToUni(brand -> {
-                    RadioStationBundle existingBundle = pool.get(brand);
-                    if (existingBundle != null && existingBundle.isActive()) {
-                        LOGGER.info("Station " + brand + " already active. Returning existing instance.");
-                        return Uni.createFrom().item(existingBundle);
+                    if (brand == null) {
+                        LOGGER.errorf("%s Brand not found for slug: %s", logPrefix(brandName), brandName);
+                        return Uni.createFrom().failure(new IllegalArgumentException("Brand not found: " + brandName));
                     }
 
-                    RadioStationBundle bundle = pool.computeIfAbsent(brand, key -> {
-                        LOGGER.info("Creating new bundle for brand: " + key);
-                        PlaylistManager playlistManager = new PlaylistManager(key, aivoxConfig, vertx, waitingAudioProvider,
+                    RadioStream existingStream = pool.get(brandName);
+                    if (existingStream != null && existingStream.isActive()) {
+                        LOGGER.infof("%s Station already active, returning existing instance", logPrefix(brandName));
+                        return Uni.createFrom().item(existingStream);
+                    }
+
+                    RadioStream radioStream = pool.computeIfAbsent(brandName, key -> {
+                        LOGGER.infof("%s Creating new stream for brand", logPrefix(key));
+                        PlaylistManager playlistManager = new PlaylistManager(key, brand.getId(), aivoxConfig, vertx, waitingAudioProvider,
                                 soundFragmentBrandService, brandService, fileHandler, segmentationService);
                         StreamManager streamManager = new StreamManager(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
                         streamManager.initializeStream();
-                        return new RadioStationBundle(key, streamManager, playlistManager);
+                        return new RadioStream(brand, streamManager, playlistManager);
                     });
 
-                    LOGGER.info("Station bundle ready for brand: " + brand + " (lazy initialization will occur on first use)");
-                    return Uni.createFrom().item(bundle);
+                    LOGGER.infof("%s Station stream ready (lazy initialization will occur on first use)", logPrefix(brandName));
+                    return Uni.createFrom().item(radioStream);
                 })
                 .onFailure().invoke(failure ->
-                        LOGGER.error("Failed to initialize station " + brandName + ": " + failure.getMessage(), failure)
+                        LOGGER.errorf("%s Failed to initialize station: %s", logPrefix(brandName), failure.getMessage(), failure)
                 );
     }
 
-    public Uni<RadioStationBundle> getStation(String brandName) {
-        RadioStationBundle bundle = pool.get(brandName);
-        return Uni.createFrom().item(bundle);
+    public Uni<RadioStream> get(String brandName) {
+        RadioStream stream = pool.get(brandName);
+        return Uni.createFrom().item(stream);
     }
 
-    public Uni<RadioStationBundle> stopAndRemoveStation(String brandName) {
-        LOGGER.info("Attempting to stop and remove station: " + brandName);
+    public Uni<RadioStream> getStation(String brandName) {
+        RadioStream stream = pool.get(brandName);
+        return Uni.createFrom().item(stream);
+    }
 
-        RadioStationBundle bundle = pool.remove(brandName);
+    public Uni<RadioStream> stopAndRemoveStation(String brandName) {
+        LOGGER.infof("%s Attempting to stop and remove station", logPrefix(brandName));
 
-        if (bundle != null) {
-            LOGGER.info("Station " + brandName + " found in pool and removed. Shutting down components.");
+        RadioStream stream = pool.remove(brandName);
 
-            // Shutdown both components
-            bundle.shutdown();
-
-            return Uni.createFrom().item(bundle);
+        if (stream != null) {
+            LOGGER.infof("%s Station found in pool and removed, shutting down", logPrefix(brandName));
+            stream.shutdown();
+            return Uni.createFrom().item(stream);
         } else {
-            LOGGER.warn("Station " + brandName + " not found in pool during stopAndRemove.");
+            LOGGER.warnf("%s Station not found in pool during stopAndRemove", logPrefix(brandName));
             return Uni.createFrom().nullItem();
         }
     }
 
-    public Collection<RadioStationBundle> getActiveStations() {
+    private String logPrefix() {
+        return "[RadioStationPool]";
+    }
+
+    private String logPrefix(String brand) {
+        return "[" + brand + "]";
+    }
+
+    public Collection<RadioStream> getActiveStations() {
         return new ArrayList<>(pool.values());
     }
 
-    public Set<String> getActiveStationNames() {
-        return new HashSet<>(pool.keySet());
-    }
 }

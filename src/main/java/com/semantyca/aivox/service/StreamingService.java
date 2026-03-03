@@ -1,6 +1,6 @@
 package com.semantyca.aivox.service;
 
-import com.semantyca.aivox.streaming.RadioStationBundle;
+import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.aivox.streaming.StreamManager;
 import io.smallrye.mutiny.Uni;
@@ -18,14 +18,14 @@ public class StreamingService {
     @Inject
     RadioStationPool radioStationPool;
 
-    public Uni<RadioStationBundle> initializeStation(String brand) {
+    public Uni<RadioStream> initializeStation(String brand) {
         return radioStationPool.initializeStation(brand)
                 .onFailure().invoke(failure -> 
                     LOGGER.error("Failed to initialize station for brand: " + brand, failure)
                 );
     }
 
-    public Uni<RadioStationBundle> stopStation(String brand) {
+    public Uni<RadioStream> stopStation(String brand) {
         return radioStationPool.stopAndRemoveStation(brand)
                 .onFailure().invoke(failure -> 
                     LOGGER.error("Failed to stop station for brand: " + brand, failure)
@@ -37,13 +37,13 @@ public class StreamingService {
                 .onItem().ifNull().failWith(() -> 
                     new RuntimeException("Station not active for brand: " + brand)
                 )
-                .onItem().transform(RadioStationBundle::getStreamManager)
+                .onItem().transform(RadioStream::getStreamManager)
                 .onItem().ifNull().failWith(() -> 
                     new RuntimeException("Stream manager not available for brand: " + brand)
                 );
     }
 
-    public Uni<List<RadioStationBundle>> getActiveStations() {
+    public Uni<List<RadioStream>> getActiveStations() {
         return Uni.createFrom().item(new ArrayList<>(radioStationPool.getActiveStations()));
     }
 

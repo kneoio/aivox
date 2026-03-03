@@ -53,13 +53,13 @@ public class PlaylistManager {
     private final Vertx vertx;
     private final WaitingAudioProvider waitingAudioProvider;
     private final SoundFragmentBrandService soundFragmentBrandService;
-    private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
     private final Path tempDir;
-    private UUID brandId;
+    private final UUID brandId;
 
     public PlaylistManager(String brand,
+                           UUID brandId,
                            AivoxConfig aivoxConfig,
                            Vertx vertx,
                            WaitingAudioProvider waitingAudioProvider,
@@ -68,10 +68,10 @@ public class PlaylistManager {
                            SoundFragmentFileHandler fileHandler,
                            AudioSegmentationService segmentationService) {
         this.brand = brand;
+        this.brandId = brandId;
         this.vertx = vertx;
         this.waitingAudioProvider = waitingAudioProvider;
         this.soundFragmentBrandService = soundFragmentBrandService;
-        this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
         this.tempDir = Paths.get(aivoxConfig.path().temp());
@@ -98,12 +98,11 @@ public class PlaylistManager {
 
     public Uni<Void> initialize() {
         LOGGER.infof("%s ========== INITIALIZING PLAYLIST MANAGER ==========", logPrefix());
+        LOGGER.infof("%s Using brand ID: %s", logPrefix(), brandId);
 
-        return resolveBrandId()
-                .onItem().invoke(() -> {
-                    LOGGER.infof("%s Brand ID resolved, starting scheduler", logPrefix());
-                    startScheduler();
-                })
+        startScheduler();
+
+        return Uni.createFrom().voidItem()
                 .onItem().transformToUni(v -> {
                     waitingAudioProvider.initialize();
 
@@ -117,7 +116,6 @@ public class PlaylistManager {
                     if (unis.isEmpty()) {
                         initialized = true;
                         initializing = false;
-                        LOGGER.infof("%s ========== INITIALIZATION COMPLETE: 0 waiting fragments ==========", logPrefix());
                         return Uni.createFrom().voidItem();
                     }
 
@@ -128,8 +126,6 @@ public class PlaylistManager {
                                         .forEach(playlistState.regularQueue::offer);
                                 initialized = true;
                                 initializing = false;
-                                LOGGER.infof("%s ========== INITIALIZATION COMPLETE: %d waiting fragment(s) ==========",
-                                        logPrefix(), playlistState.regularQueue.size());
                             })
                             .replaceWithVoid();
                 })
@@ -159,11 +155,6 @@ public class PlaylistManager {
         }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
-    /**
-     * Returns a Uni<Void> so callers can chain or subscribe with proper context.
-     * Never call subscribe() on this from a non-Vert.x thread directly —
-     * always dispatch via vertx.runOnContext() first.
-     */
     private Uni<Void> feedFragments(int maxQuantity, boolean useCooldown) {
         if (useCooldown) {
             long now = System.currentTimeMillis();
@@ -198,11 +189,6 @@ public class PlaylistManager {
             slicedFragmentsLock.readLock().unlock();
         }
 
-        if (brandId == null) {
-            LOGGER.warnf("%s Brand ID not resolved for slug: %s", logPrefix(), brand);
-            return Uni.createFrom().voidItem();
-        }
-
         LOGGER.infof("%s Calling getBrandSongs for brandId: %s", logPrefix(), brandId);
 
         return soundFragmentBrandService.getBrandSongs(brandId, PlaylistItemType.SONG)
@@ -235,26 +221,6 @@ public class PlaylistManager {
                     long successCount = processed.stream().filter(b -> b != null && b).count();
                     LOGGER.infof("%s Completed: %d/%d fragments added successfully",
                             logPrefix(), successCount, processed.size());
-                })
-                .replaceWithVoid();
-    }
-
-    private Uni<Void> resolveBrandId() {
-        if (brandId != null) {
-            return Uni.createFrom().voidItem();
-        }
-        LOGGER.infof("%s Resolving brand ID for slug: %s", logPrefix(), brand);
-        return brandService.getBySlugName(brand)
-                .onItem().invoke(brandEntity -> {
-                    if (brandEntity == null) {
-                        throw new IllegalStateException("Brand not found: " + brand);
-                    }
-                    brandId = brandEntity.getId();
-                    LOGGER.infof("%s Brand ID resolved: %s", logPrefix(), brandId);
-                })
-                .onFailure().transform(e -> {
-                    LOGGER.errorf(e, "%s Failed to resolve brand ID for slug: %s", logPrefix(), brand);
-                    return new RuntimeException("Cannot resolve brand ID for: " + brand, e);
                 })
                 .replaceWithVoid();
     }

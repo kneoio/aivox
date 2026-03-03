@@ -118,7 +118,7 @@ public class DebugResource {
                     
                     stations.forEach(bundle -> {
                         Map<String, Object> stationInfo = new HashMap<>();
-                        stationInfo.put("brand", bundle.getBrand());
+                        stationInfo.put("brand", bundle.getSlugName());
                         stationInfo.put("active", bundle.isActive());
                         stationInfo.put("createdAt", bundle.getCreatedAt());
                     });
