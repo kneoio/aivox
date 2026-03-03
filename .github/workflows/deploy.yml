@@ -26,6 +26,21 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Configure Maven settings
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${{ github.actor }}</username>
+                <password>${{ secrets.GHCR_TOKEN }}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
       - name: Cache Maven dependencies
         uses: actions/cache@v4
         with:
@@ -66,6 +81,6 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY  }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             kubectl rollout restart deployment/aivox -n default
