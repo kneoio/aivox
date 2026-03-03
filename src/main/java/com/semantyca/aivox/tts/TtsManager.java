@@ -15,9 +15,9 @@ public class TtsManager {
     private final Map<TtsProvider, TtsEngine> engines = new HashMap<>();
     
     @Inject
-    public TtsManager(ElevenLabsTtsEngine elevenLabs, AzureTtsEngine azure) {
+    public TtsManager(ElevenLabsTtsEngine elevenLabs) {
         engines.put(TtsProvider.ELEVENLABS, elevenLabs);
-        engines.put(TtsProvider.AZURE, azure);
+
         LOGGER.info("TTS Manager initialized with providers: " + engines.keySet());
     }
     
