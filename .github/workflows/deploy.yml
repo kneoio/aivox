@@ -28,27 +28,10 @@ jobs:
 
       - name: Configure Maven settings
         run: |
-            mkdir -p ~/.m2
-            cat > ~/.m2/settings.xml << EOF
-            <settings>
-            <servers>
-             <server>
-               <id>github</id>
-               <username>${{ github.actor }}</username>
-               <password>${{ secrets.GHCR_TOKEN }}</password>
-             </server>
-            </servers>
-            </settings>
-            EOF
-            echo "=== settings.xml ===" 
-            cat ~/.m2/settings.xml
-
-            - name: Cache Maven dependencies
-              uses: actions/cache@v4
-              with:
-                path: ~/.m2/repository
-                key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-                restore-keys: ${{ runner.os }}-m2
+          - name: Configure Maven settings
+          mkdir -p ~/.m2
+          echo '<settings><servers><server><id>github</id><username>${{ github.actor }}</username><password>${{ secrets.GHCR_TOKEN }}</password></server></servers></settings>' > ~/.m2/settings.xml
+          cat ~/.m2/settings.xml
 
       - name: Cache Maven dependencies
         uses: actions/cache@v4
