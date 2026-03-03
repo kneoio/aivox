@@ -20,7 +20,7 @@ public class StreamingResource {
     private StreamingService streamingService;
     
     public void setupRoutes(Router router) {
-        String path = "/stream";
+        String path = "/api/stream";
         
         router.route(HttpMethod.GET, path + "/:brand/master.m3u8").handler(this::getMasterPlaylist);
         router.route(HttpMethod.GET, path + "/:brand/stream.m3u8").handler(this::getPlaylist);
