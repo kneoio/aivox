@@ -97,7 +97,7 @@ public class StreamManager {
                                 .append(",")
                                 .append(meta)
                                 .append("\n")
-                                .append("/api/stream/")
+                                .append("/stream/")
                                 .append(brand.toLowerCase())
                                 .append("/segments/")
                                 .append(brand.toLowerCase())

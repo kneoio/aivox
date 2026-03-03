@@ -1,8 +1,7 @@
 package com.semantyca.aivox.service;
 
-import com.semantyca.aivox.streaming.LiveSoundFragment;
-import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.aivox.streaming.RadioStationBundle;
+import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.aivox.streaming.StreamManager;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -44,19 +43,8 @@ public class StreamingService {
                 );
     }
 
-    public Uni<RadioStationBundle> getStation(String brand) {
-        return radioStationPool.getStation(brand)
-                .onItem().ifNull().failWith(() -> 
-                    new RuntimeException("Station not found for brand: " + brand)
-                );
-    }
-
     public Uni<List<RadioStationBundle>> getActiveStations() {
         return Uni.createFrom().item(new ArrayList<>(radioStationPool.getActiveStations()));
-    }
-
-    public Uni<List<String>> getActiveStationNames() {
-        return Uni.createFrom().item(new ArrayList<>(radioStationPool.getActiveStationNames()));
     }
 
     public Uni<String> getMasterPlaylist(String brand) {

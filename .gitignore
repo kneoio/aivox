@@ -30,3 +30,4 @@ src/main/resources/application-prod.properties
 .env
 /src/main/resources/application-dev.properties
 /temp/
+/temp_soundfragments_storage/
