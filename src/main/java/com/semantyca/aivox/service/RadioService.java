@@ -1,6 +1,6 @@
 package com.semantyca.aivox.service;
 
-import com.semantyca.aivox.dto.status.StatusMixplaDTO;
+import com.semantyca.aivox.dto.player.StatusMixplaDTO;
 import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.model.brand.Brand;
 import com.semantyca.aivox.service.exceptions.RadioStationException;

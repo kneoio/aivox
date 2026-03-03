@@ -1,6 +1,7 @@
 package com.semantyca.aivox.model.stream;
 
 import com.semantyca.aivox.model.IStream;
+import com.semantyca.aivox.model.brand.AiOverriding;
 import com.semantyca.aivox.model.brand.Brand;
 import com.semantyca.aivox.model.brand.BrandScriptEntry;
 import com.semantyca.aivox.streaming.StreamManager;
@@ -62,5 +63,15 @@ public abstract class AbstractStream implements IStream {
             statusHistory.add(record);
             this.status = newStatus;
         }
+    }
+
+    @Override
+    public UUID getAiAgentId() {
+        return null;
+    }
+
+    @Override
+    public AiOverriding getAiOverriding() {
+        return null;
     }
 }

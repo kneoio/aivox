@@ -2,6 +2,7 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.service.BrandService;
@@ -16,6 +17,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -100,8 +102,9 @@ public class RadioStationPool {
                     LOGGER.infof("%s Station stream ready (lazy initialization will occur on first use)", logPrefix(brandName));
                     return Uni.createFrom().item(radioStream);
                 })
+                .onFailure().retry().withBackOff(Duration.ofSeconds(1), Duration.ofSeconds(5)).atMost(3)
                 .onFailure().invoke(failure ->
-                        LOGGER.errorf("%s Failed to initialize station: %s", logPrefix(brandName), failure.getMessage(), failure)
+                        LOGGER.errorf("%s Failed to initialize station after retries: %s", logPrefix(brandName), failure.getMessage(), failure)
                 );
     }
 
@@ -113,6 +116,10 @@ public class RadioStationPool {
     public Uni<RadioStream> getStation(String brandName) {
         RadioStream stream = pool.get(brandName);
         return Uni.createFrom().item(stream);
+    }
+
+    public Collection<IStream> getOnlineStationsSnapshot() {
+        return new ArrayList<>(pool.values());
     }
 
     public Uni<RadioStream> stopAndRemoveStation(String brandName) {

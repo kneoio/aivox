@@ -1,6 +1,8 @@
 package com.semantyca.aivox.model.brand;
 
+import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.ManagedBy;
+import com.semantyca.mixpla.model.cnst.StreamStatus;
 import com.semantyca.mixpla.model.cnst.SubmissionPolicy;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.SecureDataEntity;
@@ -42,6 +44,9 @@ public class Brand extends SecureDataEntity<UUID> {
     private List<Label> labelList;
     private List<BrandScriptEntry> scripts;
     private Owner owner;
+    private AiAgentStatus aiAgentStatus;
+    @Deprecated //???
+    private StreamStatus status;
 
     public String toString() {
         return String.format("id: %s, slug: %s", getId(), slugName);

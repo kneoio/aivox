@@ -1,5 +1,6 @@
 package com.semantyca.aivox.model;
 
+import com.semantyca.aivox.model.brand.AiOverriding;
 import com.semantyca.aivox.model.brand.Brand;
 import com.semantyca.aivox.streaming.StreamManager;
 import com.semantyca.core.model.cnst.LanguageTag;
@@ -65,4 +66,8 @@ public interface IStream {
     LanguageTag getStreamLanguage();
 
     void setStreamLanguage(LanguageTag streamLanguage);
+
+    UUID getAiAgentId();
+
+    AiOverriding getAiOverriding();
 }

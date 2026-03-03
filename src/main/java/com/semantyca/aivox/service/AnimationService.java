@@ -1,6 +1,6 @@
 package com.semantyca.aivox.service;
 
-import com.semantyca.aivox.dto.status.AnimationStatusDTO;
+import com.semantyca.aivox.dto.player.AnimationStatusDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.Random;

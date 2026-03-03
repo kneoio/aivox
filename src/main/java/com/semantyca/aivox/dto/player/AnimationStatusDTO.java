@@ -1,4 +1,4 @@
-package com.semantyca.aivox.dto.status;
+package com.semantyca.aivox.dto.player;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
