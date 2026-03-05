@@ -1,6 +1,5 @@
 package com.semantyca.aivox.model.stream;
 
-
 import com.semantyca.mixpla.model.cnst.StreamStatus;
 
 import java.time.LocalDateTime;

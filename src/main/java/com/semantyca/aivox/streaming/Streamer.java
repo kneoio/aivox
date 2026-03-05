@@ -2,7 +2,9 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
+import com.semantyca.mixpla.model.stream.IStreamer;
 import io.smallrye.mutiny.subscription.Cancellable;
+import lombok.Getter;
 import org.jboss.logging.Logger;
 
 import java.time.ZoneId;
@@ -18,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Streamer {
+public class Streamer implements IStreamer {
     private static final ZoneId ZONE_ID = ZoneId.of("Europe/Lisbon");
     private static final Logger LOGGER = Logger.getLogger(Streamer.class);
     private static final Pattern SEGMENT_PATTERN = Pattern.compile("([^_]+)_([0-9]+)_([0-9]+)\\.ts$");
@@ -29,6 +31,7 @@ public class Streamer {
 
     private final String brand;
     private final StreamState streamState = new StreamState();
+    @Getter
     private final PlaylistManager playlistManager;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final HlsConfig hlsConfig;

@@ -2,7 +2,6 @@ package com.semantyca.aivox.service.manipulation.mixing.handler;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.dto.queue.AddToQueueDTO;
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.AiAgentService;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
@@ -14,6 +13,8 @@ import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import com.semantyca.mixpla.model.stream.IPlaylistManager;
+import com.semantyca.mixpla.model.stream.IStream;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.SuperUser;
@@ -50,7 +51,7 @@ public class IntroSongHandler {
     }
 
     public Uni<Boolean> handle(IStream stream, AddToQueueDTO toQueueDTO) {
-        PlaylistManager playlistManager = stream.getStreamManager().getPlaylistManager();
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
         
         if (toQueueDTO.getSoundFragments() == null || toQueueDTO.getSoundFragments().isEmpty()) {
             LOGGER.error("No sound fragments provided in AddToQueueDTO");

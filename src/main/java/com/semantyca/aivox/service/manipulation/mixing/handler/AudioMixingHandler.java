@@ -2,7 +2,6 @@ package com.semantyca.aivox.service.manipulation.mixing.handler;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.dto.queue.AddToQueueDTO;
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.AiAgentService;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
@@ -14,6 +13,7 @@ import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
+import com.semantyca.mixpla.model.stream.IStream;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.SuperUser;
@@ -66,7 +66,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
     }
 
     public Uni<Boolean> handleSongIntroSong(IStream stream, AddToQueueDTO toQueueDTO) {
-        PlaylistManager playlistManager = stream.getStreamManager().getPlaylistManager();
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
         UUID soundFragmentId1 = toQueueDTO.getSoundFragments().get("song1");
         String introSongPath = toQueueDTO.getFilePaths().get("audio1");
         UUID soundFragmentId2 = toQueueDTO.getSoundFragments().get("song2");
@@ -132,7 +132,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
     }
 
     public Uni<Boolean> handleIntroSongIntroSong(IStream stream, AddToQueueDTO toQueueDTO) {
-        PlaylistManager playlistManager = stream.getStreamManager().getPlaylistManager();
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
         String part1 = toQueueDTO.getFilePaths().get("audio1");           // intro1
         UUID part2 = toQueueDTO.getSoundFragments().get("song1");         // song
         String part3 = toQueueDTO.getFilePaths().get("audio2");           // intro2
@@ -199,7 +199,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
     }
 
     public Uni<Boolean> handleSongOnly(IStream stream, AddToQueueDTO toQueueDTO) {
-        PlaylistManager playlistManager = stream.getStreamManager().getPlaylistManager();
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
         UUID soundFragmentId = toQueueDTO.getSoundFragments().get("song1");
 
         LOGGER.info("Handling single song feed");
@@ -226,7 +226,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
     }
 
     public Uni<Boolean> handleConcatenationAndFeed(IStream stream, AddToQueueDTO toQueueDTO, ConcatenationType concatType) {
-        PlaylistManager playlistManager = stream.getStreamManager().getPlaylistManager();
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
         UUID songId1 = toQueueDTO.getSoundFragments().get("song1");
         UUID songId2 = toQueueDTO.getSoundFragments().get("song2");
 

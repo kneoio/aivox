@@ -2,7 +2,6 @@ package com.semantyca.aivox.service.live;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.dto.queue.AddToQueueDTO;
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.model.stream.LiveScene;
 import com.semantyca.aivox.model.stream.PendingSongEntry;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
@@ -17,6 +16,7 @@ import com.semantyca.core.util.BrandLogger;
 import com.semantyca.mixpla.model.Scene;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import com.semantyca.mixpla.model.stream.IStream;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -115,7 +116,7 @@ public class JinglePlaybackHandler {
                 );
     }
 
-    private void handleTwoSongs(IStream stream, LiveScene liveScene, java.util.Set<UUID> fetchedSongsInScene) {
+    private void handleTwoSongs(IStream stream, LiveScene liveScene, Set<UUID> fetchedSongsInScene) {
         List<PendingSongEntry> availableSongs = liveScene.getSongs().stream()
                 .filter(entry -> !fetchedSongsInScene.contains(entry.getSoundFragment().getId()))
                 .toList();

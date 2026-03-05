@@ -10,6 +10,7 @@ import com.semantyca.aivox.streaming.WaitingAudioProvider;
 import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
+import com.semantyca.mixpla.model.stream.IPlaylistManager;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.core.Vertx;
@@ -32,7 +33,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
-public class PlaylistManager {
+public class PlaylistManager implements IPlaylistManager {
 
     private static final Logger LOGGER = Logger.getLogger(PlaylistManager.class);
     private static final int SELF_MANAGING_INTERVAL_SECONDS = 30;

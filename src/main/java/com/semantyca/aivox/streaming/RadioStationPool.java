@@ -2,7 +2,6 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.model.stats.BroadcastingStats;
 import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
@@ -11,6 +10,7 @@ import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
+import com.semantyca.mixpla.model.stream.IStream;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.core.Vertx;

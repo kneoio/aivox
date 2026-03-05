@@ -4,8 +4,8 @@ import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import com.anthropic.models.messages.ToolUseBlock;
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.aivox.service.RadioService;
+import com.semantyca.mixpla.model.stream.IStream;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 

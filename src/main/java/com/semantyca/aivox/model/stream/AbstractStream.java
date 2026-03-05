@@ -1,6 +1,5 @@
 package com.semantyca.aivox.model.stream;
 
-import com.semantyca.aivox.model.IStream;
 import com.semantyca.core.model.cnst.LanguageTag;
 import com.semantyca.mixpla.model.brand.AiOverriding;
 import com.semantyca.mixpla.model.brand.Brand;
@@ -9,6 +8,8 @@ import com.semantyca.mixpla.model.brand.ProfileOverriding;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.ManagedBy;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
+import com.semantyca.mixpla.model.stream.IStream;
+import com.semantyca.mixpla.model.stream.IStreamer;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.officeframe.cnst.CountryCode;
 import lombok.Getter;
@@ -18,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +35,7 @@ public abstract class AbstractStream implements IStream {
     protected StreamStatus status = StreamStatus.OFF_LINE;
     protected List<StatusChangeRecord> statusHistory = new LinkedList<>();
     protected LocalDateTime startTime;
-    protected IStreamManager streamManager;
+    protected IStreamer streamer;
     protected ZoneId timeZone;
     protected long bitRate;
     protected ManagedBy managedBy = ManagedBy.ITSELF;
@@ -72,11 +72,15 @@ public abstract class AbstractStream implements IStream {
         }
     }
 
-    public Set<UUID> getFetchedSongsInScene(UUID sceneId) {
-        return fetchedSongsByScene.computeIfAbsent(sceneId, k -> new HashSet<>());
+    @Override
+    public boolean isActive() {
+        return false;
     }
 
-    public void clearSceneState(UUID sceneId) {
-        fetchedSongsByScene.remove(sceneId);
+    @Override
+    public String toString() {
+        return String.format("RadioStream[id: %s, slug: %s, baseBrand: %s]", id, slugName, masterBrand.getSlugName());
     }
+
+    public void shutdown(){};
 }
