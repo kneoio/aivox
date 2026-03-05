@@ -1,13 +1,14 @@
 package com.semantyca.aivox.repository.brand;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.model.brand.AiOverriding;
-import com.semantyca.aivox.model.brand.Brand;
-import com.semantyca.aivox.model.brand.Owner;
-import com.semantyca.aivox.model.brand.ProfileOverriding;
-import com.semantyca.aivox.repository.MixplaNameResolver;
+import com.semantyca.mixpla.model.brand.AiOverriding;
+import com.semantyca.mixpla.model.brand.Brand;
+import com.semantyca.mixpla.model.brand.BrandScriptEntry;
+import com.semantyca.mixpla.model.brand.Owner;
+import com.semantyca.mixpla.model.brand.ProfileOverriding;
 import com.semantyca.mixpla.model.cnst.ManagedBy;
 import com.semantyca.mixpla.model.cnst.SubmissionPolicy;
+import com.semantyca.mixpla.repository.MixplaNameResolver;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.repository.AsyncRepository;
@@ -26,15 +27,19 @@ import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.time.OffsetDateTime;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.UUID;
 
-import static com.semantyca.aivox.repository.MixplaNameResolver.RADIO_STATION;
+import static com.semantyca.mixpla.repository.MixplaNameResolver.BRAND_STATS;
+import static com.semantyca.mixpla.repository.MixplaNameResolver.RADIO_STATION;
+
 
 @ApplicationScoped
 public class BrandRepository extends AsyncRepository {
     private static final EntityData entityData = MixplaNameResolver.create().getEntityNames(RADIO_STATION);
+    private static final EntityData brandStats = MixplaNameResolver.create().getEntityNames(BRAND_STATS);
 
     @Inject
     public BrandRepository(PgPool client, ObjectMapper mapper, RLSRepository rlsRepository) {
@@ -150,6 +155,34 @@ public class BrandRepository extends AsyncRepository {
                         return Uni.createFrom().failure(new DocumentHasNotFoundException(name));
                     }
                 });
+    }
+    public Uni<List<BrandScriptEntry>> getScriptEntriesForBrand(UUID brandId) {
+        String sql = "SELECT script_id, user_variables FROM kneobroadcaster__brand_scripts WHERE brand_id = $1 ORDER BY rank";
+        return client.preparedQuery(sql)
+                .execute(Tuple.of(brandId))
+                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
+                .onItem().transform(row -> {
+                    BrandScriptEntry entry = new BrandScriptEntry();
+                    entry.setScriptId(row.getUUID("script_id"));
+                    JsonObject userVarsJson = row.getJsonObject("user_variables");
+                    if (userVarsJson != null) {
+                        entry.setUserVariables(userVarsJson.getMap());
+                    }
+                    return entry;
+                })
+                .collect().asList();
+    }
+
+    public Uni<Void> upsertStationAccessWithCountAndGeo(String stationName, Long accessCount, OffsetDateTime lastAccessTime, String userAgent, String ipAddress, String countryCode) {
+        String sql = "INSERT INTO " + brandStats.getTableName() +
+                " (station_name, access_count, last_access_time, user_agent, ip_address, country_code) " +
+                "VALUES ($1, $2, $3, $4, $5, $6) " +
+                "ON CONFLICT (station_name, ip_address, country_code) " +
+                "DO UPDATE SET access_count = EXCLUDED.access_count + " + brandStats.getTableName() + ".access_count, last_access_time = $3, user_agent = $4;";
+
+        return client.preparedQuery(sql)
+                .execute(Tuple.of(stationName, accessCount, lastAccessTime, userAgent, ipAddress, countryCode))
+                .replaceWithVoid();
     }
 
     private Brand from(Row row) {

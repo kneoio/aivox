@@ -1,12 +1,12 @@
 package com.semantyca.aivox.repository.soundfragment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
-import com.semantyca.aivox.repository.MixplaNameResolver;
 import com.semantyca.core.model.FileMetadata;
 import com.semantyca.core.model.cnst.FileStorageType;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
+import com.semantyca.mixpla.repository.MixplaNameResolver;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.model.user.SuperUser;
 import io.kneo.core.repository.AsyncRepository;
@@ -28,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static com.semantyca.aivox.repository.MixplaNameResolver.SOUND_FRAGMENT;
+import static com.semantyca.mixpla.repository.MixplaNameResolver.SOUND_FRAGMENT;
 
 
 public abstract class SoundFragmentRepositoryAbstract extends AsyncRepository {

@@ -1,16 +1,16 @@
 package com.semantyca.aivox.repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.model.aiagent.AiAgent;
-import com.semantyca.aivox.model.aiagent.LanguagePreference;
-import com.semantyca.aivox.model.aiagent.TTSSetting;
-import com.semantyca.aivox.model.cnst.LlmType;
 import com.semantyca.core.model.cnst.LanguageTag;
+import com.semantyca.mixpla.model.aiagent.AiAgent;
+import com.semantyca.mixpla.model.aiagent.LanguagePreference;
+import com.semantyca.mixpla.model.aiagent.TTSSetting;
+import com.semantyca.mixpla.model.cnst.LlmType;
+import com.semantyca.mixpla.repository.MixplaNameResolver;
 import io.kneo.core.model.embedded.DocumentAccessInfo;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.repository.AsyncRepository;
 import io.kneo.core.repository.exception.DocumentHasNotFoundException;
-import io.kneo.core.repository.exception.DocumentModificationAccessException;
 import io.kneo.core.repository.rls.RLSRepository;
 import io.kneo.core.repository.table.EntityData;
 import io.smallrye.mutiny.Multi;
@@ -20,19 +20,17 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.pgclient.PgPool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
-import io.vertx.mutiny.sqlclient.SqlClient;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static com.semantyca.aivox.repository.MixplaNameResolver.AI_AGENT;
+import static com.semantyca.mixpla.repository.MixplaNameResolver.AI_AGENT;
 
 
 @ApplicationScoped

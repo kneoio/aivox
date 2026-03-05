@@ -1,8 +1,8 @@
 package com.semantyca.aivox.service;
 
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentBrandRepository;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

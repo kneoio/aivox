@@ -1,6 +1,6 @@
 package com.semantyca.aivox.service.playlist;
 
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import io.smallrye.mutiny.Uni;
 

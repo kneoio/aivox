@@ -1,11 +1,11 @@
 package com.semantyca.aivox.repository.soundfragment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
-import com.semantyca.core.model.FileMetadata;
-import com.semantyca.core.model.cnst.FileStorageType;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
+import com.semantyca.mixpla.model.soundfragment.BrandSoundFragment;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
+import io.kneo.core.model.user.IUser;
 import io.kneo.core.repository.rls.RLSRepository;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -16,7 +16,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Duration;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -49,6 +48,51 @@ public class SoundFragmentBrandRepository extends SoundFragmentRepositoryAbstrac
                 .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
                 .onItem().transform(this::from)
                 .collect().asList();
+    }
+
+    public Uni<List<BrandSoundFragment>> findForBrandBySimilarity(UUID brandId, String keyword, final int limit, final int offset,
+                                                                  boolean includeArchived, IUser user) {
+        String sql = "SELECT t.*, bsf.played_by_brand_count, bsf.rated_by_brand_count, bsf.last_time_played_by_brand, " +
+                "similarity(t.search_name, $3) AS sim " +
+                "FROM " + entityData.getTableName() + " t " +
+                "JOIN kneobroadcaster__brand_sound_fragments bsf ON t.id = bsf.sound_fragment_id " +
+                "JOIN " + entityData.getRlsName() + " rls ON t.id = rls.entity_id " +
+                "WHERE bsf.brand_id = $1 AND rls.reader = $2";
+
+        if (!includeArchived) {
+            sql += " AND  t.archived = 0 ";
+        }
+
+        sql += " AND (t.search_name ILIKE '%' || $3 || '%' OR similarity(t.search_name, $3) > 0.05)";
+        sql += " ORDER BY sim DESC";
+
+        if (limit > 0) {
+            sql += String.format(" LIMIT %s OFFSET %s", limit, offset);
+        }
+
+        return client.preparedQuery(sql)
+                .execute(Tuple.of(brandId, user.getId(), keyword))
+                .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
+                .onItem().transformToUni(row -> {
+                    Uni<SoundFragment> soundFragmentUni = from(row, true, false, true);
+                    return soundFragmentUni.onItem().transform(soundFragment -> {
+                        BrandSoundFragment brandSoundFragment = createBrandSoundFragment(row, brandId);
+                        brandSoundFragment.setSoundFragment(soundFragment);
+                        return brandSoundFragment;
+                    });
+                })
+                .concatenate()
+                .collect().asList();
+    }
+
+    private BrandSoundFragment createBrandSoundFragment(Row row, UUID brandId) {
+        BrandSoundFragment brandSoundFragment = new BrandSoundFragment();
+        brandSoundFragment.setId(row.getUUID("id"));
+        brandSoundFragment.setDefaultBrandId(brandId);
+        brandSoundFragment.setPlayedByBrandCount(row.getInteger("played_by_brand_count"));
+        brandSoundFragment.setRatedByBrandCount(row.getInteger("rated_by_brand_count"));
+        brandSoundFragment.setPlayedTime(row.getLocalDateTime("last_time_played_by_brand"));
+        return brandSoundFragment;
     }
 
     private SoundFragment from(Row row) {

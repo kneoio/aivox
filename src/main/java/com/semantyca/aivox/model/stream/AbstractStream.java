@@ -1,11 +1,11 @@
 package com.semantyca.aivox.model.stream;
 
 import com.semantyca.aivox.model.IStream;
-import com.semantyca.aivox.model.brand.AiOverriding;
-import com.semantyca.aivox.model.brand.Brand;
-import com.semantyca.aivox.model.brand.BrandScriptEntry;
-import com.semantyca.aivox.streaming.StreamManager;
 import com.semantyca.core.model.cnst.LanguageTag;
+import com.semantyca.mixpla.model.brand.AiOverriding;
+import com.semantyca.mixpla.model.brand.Brand;
+import com.semantyca.mixpla.model.brand.BrandScriptEntry;
+import com.semantyca.mixpla.model.brand.ProfileOverriding;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.ManagedBy;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -34,18 +35,24 @@ public abstract class AbstractStream implements IStream {
     protected StreamStatus status = StreamStatus.OFF_LINE;
     protected List<StatusChangeRecord> statusHistory = new LinkedList<>();
     protected LocalDateTime startTime;
-    protected StreamManager streamManager;
+    protected IStreamManager streamManager;
     protected ZoneId timeZone;
     protected long bitRate;
     protected ManagedBy managedBy = ManagedBy.ITSELF;
     protected String color;
     protected CountryCode country;
     protected double popularityRate = 5;
+    protected UUID aiAgentId;
+    protected UUID profileId;
+    protected AiOverriding aiOverriding;
     protected List<BrandScriptEntry> scripts;
+    protected ProfileOverriding profileOverriding;
     protected LocalDateTime createdAt;
     protected LocalDateTime expiresAt;
+    protected StreamAgenda streamAgenda;
     protected AiAgentStatus aiAgentStatus;
     protected long lastAgentContactAt;
+    protected LanguageTag broadcastingLanguage;
     protected LanguageTag streamLanguage;
     protected final Map<UUID, Set<UUID>> fetchedSongsByScene = new HashMap<>();
 
@@ -65,13 +72,11 @@ public abstract class AbstractStream implements IStream {
         }
     }
 
-    @Override
-    public UUID getAiAgentId() {
-        return null;
+    public Set<UUID> getFetchedSongsInScene(UUID sceneId) {
+        return fetchedSongsByScene.computeIfAbsent(sceneId, k -> new HashSet<>());
     }
 
-    @Override
-    public AiOverriding getAiOverriding() {
-        return null;
+    public void clearSceneState(UUID sceneId) {
+        fetchedSongsByScene.remove(sceneId);
     }
 }

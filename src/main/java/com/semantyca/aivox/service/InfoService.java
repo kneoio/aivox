@@ -2,14 +2,12 @@ package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.dto.RadioStationStatusDTO;
 import com.semantyca.aivox.model.IStream;
-import com.semantyca.aivox.model.aiagent.AiAgent;
-import com.semantyca.aivox.model.aiagent.LanguagePreference;
-import com.semantyca.aivox.model.brand.AiOverriding;
-import com.semantyca.aivox.model.brand.Brand;
 import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.core.model.cnst.LanguageTag;
-import com.semantyca.mixpla.model.cnst.AiAgentStatus;
-import com.semantyca.mixpla.model.cnst.StreamStatus;
+import com.semantyca.mixpla.model.aiagent.AiAgent;
+import com.semantyca.mixpla.model.aiagent.LanguagePreference;
+import com.semantyca.mixpla.model.brand.AiOverriding;
+import com.semantyca.mixpla.model.brand.Brand;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.SuperUser;
 import io.smallrye.mutiny.Uni;
@@ -68,8 +66,6 @@ public class InfoService {
                 stream.getManagedBy().toString(),
                 stream.getAiAgentId(),
                 stream.getAiOverriding(),
-                stream.getAiAgentStatus(),
-                stream.getStatus(),
                 stream.getCountry().name(),
                 stream.getColor(),
                 stream.getDescription(),
@@ -86,8 +82,6 @@ public class InfoService {
                 brand.getManagedBy().toString(),
                 brand.getAiAgentId(),
                 brand.getAiOverriding(),
-                brand.getAiAgentStatus(),
-                brand.getStatus(),
                 brand.getCountry().name(),
                 brand.getColor(),
                 brand.getDescription(),
@@ -102,21 +96,13 @@ public class InfoService {
             String managedByType,
             UUID aiAgentId,
             AiOverriding overriddenAiDj,
-            AiAgentStatus agentStatus,
-            StreamStatus stationStatus,
             String stationCountryCode,
             String color,
             String description,
             long bitRate,
             double popularityRate
     ) {
-        String currentStatus = stationStatus != null
-                ? stationStatus.name()
-                : StreamStatus.OFF_LINE.name();
 
-        String resolvedAgentStatus = agentStatus != null
-                ? agentStatus.name()
-                : AiAgentStatus.UNDEFINED.name();
 
         if (aiAgentId == null) {
             RadioStationStatusDTO dto = new RadioStationStatusDTO(
@@ -125,8 +111,6 @@ public class InfoService {
                     managedByType,
                     null,
                     null,
-                    resolvedAgentStatus,
-                    currentStatus,
                     stationCountryCode,
                     color,
                     description,
@@ -152,8 +136,6 @@ public class InfoService {
                             managedByType,
                             djName,
                             selectedLang.toLanguageCode().name(),
-                            resolvedAgentStatus,
-                            currentStatus,
                             stationCountryCode,
                             color,
                             description,
@@ -169,8 +151,6 @@ public class InfoService {
                                 managedByType,
                                 null,
                                 null,
-                                resolvedAgentStatus,
-                                currentStatus,
                                 stationCountryCode,
                                 color,
                                 description,

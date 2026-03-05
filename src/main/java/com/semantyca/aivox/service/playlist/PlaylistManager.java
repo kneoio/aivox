@@ -1,9 +1,7 @@
 package com.semantyca.aivox.service.playlist;
 
 import com.semantyca.aivox.config.AivoxConfig;
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
-import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.streaming.LiveSoundFragment;
@@ -11,6 +9,7 @@ import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.aivox.streaming.WaitingAudioProvider;
 import com.semantyca.core.model.FileMetadata;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.core.Vertx;
@@ -64,7 +63,6 @@ public class PlaylistManager {
                            Vertx vertx,
                            WaitingAudioProvider waitingAudioProvider,
                            SoundFragmentBrandService soundFragmentBrandService,
-                           BrandService brandService,
                            SoundFragmentFileHandler fileHandler,
                            AudioSegmentationService segmentationService) {
         this.brand = brand;
@@ -97,8 +95,7 @@ public class PlaylistManager {
     }
 
     public Uni<Void> initialize() {
-        LOGGER.infof("%s ========== INITIALIZING PLAYLIST MANAGER ==========", logPrefix());
-        LOGGER.infof("%s Using brand ID: %s", logPrefix(), brandId);
+        LOGGER.infof("%s INITIALIZING, Using brand ID: %s", logPrefix(), brandId);
 
         startScheduler();
 
@@ -154,6 +151,7 @@ public class PlaylistManager {
             }
         }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
+
 
     private Uni<Void> feedFragments(int maxQuantity, boolean useCooldown) {
         if (useCooldown) {
@@ -287,6 +285,7 @@ public class PlaylistManager {
                             });
                 });
     }
+
 
     public LiveSoundFragment getNextLiveFragment() {
         if (!initialized) {

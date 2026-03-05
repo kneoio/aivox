@@ -24,6 +24,22 @@ public interface AivoxConfig {
     @WithName("station.whitelist")
     Optional<List<String>> stationWhitelist();
 
+    String getPathForMerged();
+
+    String getFfprobePath();
+
+    String getAgentUrl();
+
+    String getAgentApiKey();
+
+    Object getElevenLabsOutputFormat();
+
+    String getElevenLabsApiKey();
+
+    String getPathUploads();
+
+    String getSegmentationOutputDir();
+
     interface Path {
         @WithDefault("uploads")
         String uploads();

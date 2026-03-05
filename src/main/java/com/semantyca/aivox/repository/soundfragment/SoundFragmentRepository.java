@@ -1,9 +1,12 @@
 package com.semantyca.aivox.repository.soundfragment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.model.soundfragment.SoundFragment;
-import com.semantyca.aivox.model.soundfragment.SoundFragmentFilter;
-import com.semantyca.aivox.repository.MixplaNameResolver;
+import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.model.cnst.PlaylistItemType;
+import com.semantyca.mixpla.model.filter.SoundFragmentFilter;
+import com.semantyca.mixpla.model.soundfragment.BrandSoundFragment;
+import com.semantyca.mixpla.model.soundfragment.SoundFragment;
+import com.semantyca.mixpla.repository.MixplaNameResolver;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.repository.exception.DocumentHasNotFoundException;
 import io.kneo.core.repository.rls.RLSRepository;
@@ -13,6 +16,7 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.pgclient.PgPool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
+import io.vertx.mutiny.sqlclient.SqlResult;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -20,23 +24,27 @@ import jakarta.inject.Inject;
 import java.util.List;
 import java.util.UUID;
 
-import static com.semantyca.aivox.repository.MixplaNameResolver.SOUND_FRAGMENT;
+import static com.semantyca.mixpla.repository.MixplaNameResolver.SOUND_FRAGMENT;
+
 
 @ApplicationScoped
 public class SoundFragmentRepository extends SoundFragmentRepositoryAbstract {
     private static final EntityData entityData = MixplaNameResolver.create().getEntityNames(SOUND_FRAGMENT);
     private final SoundFragmentQueryBuilder queryBuilder;
+    private final SoundFragmentFileHandler fileHandler;
 
-    public SoundFragmentRepository() {
+    public SoundFragmentRepository(SoundFragmentFileHandler fileHandler) {
         super();
+        this.fileHandler = fileHandler;
         this.queryBuilder = null;
     }
 
     @Inject
     public SoundFragmentRepository(PgPool client, ObjectMapper mapper, RLSRepository rlsRepository,
-                                   SoundFragmentQueryBuilder queryBuilder) {
+                                   SoundFragmentQueryBuilder queryBuilder, SoundFragmentFileHandler fileHandler) {
         super(client, mapper, rlsRepository);
         this.queryBuilder = queryBuilder;
+        this.fileHandler = fileHandler;
     }
 
     public Uni<List<SoundFragment>> getAll(final int limit, final int offset,
@@ -82,6 +90,27 @@ public class SoundFragmentRepository extends SoundFragmentRepositoryAbstract {
                 .onItem().transform(rows -> rows.iterator().next().getInteger(0));
     }
 
+    public Uni<SoundFragment> findById(UUID uuid, Long userID, boolean includeArchived, boolean includeGenres, boolean includeFiles) {
+        String sql = "SELECT theTable.*, rls.*" +
+                String.format(" FROM %s theTable JOIN %s rls ON theTable.id = rls.entity_id ", entityData.getTableName(), entityData.getRlsName()) +
+                "WHERE rls.reader = $1 AND theTable.id = $2";
+        if (!includeArchived) {
+            sql += " AND theTable.archived = 0";
+        }
+
+        return client.preparedQuery(sql)
+                .execute(Tuple.of(userID, uuid))
+                .onItem().transform(RowSet::iterator)
+                .onItem().transformToUni(iterator -> {
+                    if (iterator.hasNext()) {
+                        Row row = iterator.next();
+                        return from(row, includeGenres, includeFiles, true);
+                    } else {
+                        return Uni.createFrom().failure(new DocumentHasNotFoundException(uuid));
+                    }
+                });
+    }
+
     public Uni<SoundFragment> findById(UUID uuid, Long userID, boolean includeGenres, boolean includeFiles) {
         String sql = "SELECT theTable.*, rls.*" +
                 String.format(" FROM %s theTable JOIN %s rls ON theTable.id = rls.entity_id ", entityData.getTableName(), entityData.getRlsName()) +
@@ -114,5 +143,23 @@ public class SoundFragmentRepository extends SoundFragmentRepositoryAbstract {
                         return Uni.createFrom().failure(new DocumentHasNotFoundException(uuid));
                     }
                 });
+    }
+
+
+    public Uni<FileMetadata> getFirstFile(UUID id) {
+        assert fileHandler != null;
+        return fileHandler.getFirstFile(id);
+    }
+
+
+    public Uni<List<BrandSoundFragment>> getForBrandBySimilarity(UUID brandId, String keyword, final int limit, final int offset,
+                                                                 boolean includeArchived, IUser user) {
+        SoundFragmentBrandRepository brandRepository = new SoundFragmentBrandRepository(client, mapper, rlsRepository);
+        return brandRepository.findForBrandBySimilarity(brandId, keyword, limit, offset, includeArchived, user);
+    }
+
+    public Uni<List<SoundFragment>> findByTypeAndBrand(PlaylistItemType type, UUID brandId, int limit, int offset) {
+        SoundFragmentBrandRepository brandRepository = new SoundFragmentBrandRepository(client, mapper, rlsRepository);
+        return brandRepository.getBrandSongs(brandId, type, limit, offset);
     }
 }

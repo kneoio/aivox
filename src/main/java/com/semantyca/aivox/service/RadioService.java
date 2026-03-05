@@ -2,11 +2,11 @@ package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.dto.player.StatusMixplaDTO;
 import com.semantyca.aivox.model.IStream;
-import com.semantyca.aivox.model.brand.Brand;
-import com.semantyca.aivox.service.exceptions.RadioStationException;
 import com.semantyca.aivox.streaming.RadioStationPool;
+import com.semantyca.mixpla.model.brand.Brand;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
+import com.semantyca.mixpla.service.exceptions.RadioStationException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -73,6 +73,14 @@ public class RadioService {
                                 animationService.generateRandomAnimation()
                         )
                 );
+    }
+
+    public Uni<IStream> initializeStation(String brand) {
+        return null;
+    }
+
+    public Uni<IStream> stopStation(String brand) {
+        return null;
     }
 }
 

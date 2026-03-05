@@ -1,6 +1,6 @@
 package com.semantyca.aivox.repository.soundfragment;
 
-import com.semantyca.aivox.model.soundfragment.SoundFragmentFilter;
+import com.semantyca.mixpla.model.filter.SoundFragmentFilter;
 import io.kneo.core.model.user.IUser;
 import jakarta.enterprise.context.ApplicationScoped;
 

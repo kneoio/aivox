@@ -1,6 +1,6 @@
 package com.semantyca.aivox.tts;
 
-import com.semantyca.aivox.model.cnst.TTSEngineType;
+import com.semantyca.mixpla.model.cnst.TTSEngineType;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;

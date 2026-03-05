@@ -1,7 +1,7 @@
 package com.semantyca.aivox.tts;
 
 import com.semantyca.aivox.dto.TtsDTO;
-import com.semantyca.aivox.model.cnst.TTSEngineType;
+import com.semantyca.mixpla.model.cnst.TTSEngineType;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;

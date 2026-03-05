@@ -1,9 +1,10 @@
 package com.semantyca.aivox.model;
 
-import com.semantyca.aivox.model.brand.AiOverriding;
-import com.semantyca.aivox.model.brand.Brand;
-import com.semantyca.aivox.streaming.StreamManager;
+import com.semantyca.aivox.model.stream.IStreamManager;
 import com.semantyca.core.model.cnst.LanguageTag;
+import com.semantyca.mixpla.model.brand.AiOverriding;
+import com.semantyca.mixpla.model.brand.Brand;
+import com.semantyca.mixpla.model.brand.ProfileOverriding;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.ManagedBy;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
@@ -37,7 +38,7 @@ public interface IStream {
 
     void setStatus(StreamStatus status);
 
-    StreamManager getStreamManager();
+    IStreamManager getStreamManager();
 
     AiAgentStatus getAiAgentStatus();
 
@@ -70,4 +71,10 @@ public interface IStream {
     UUID getAiAgentId();
 
     AiOverriding getAiOverriding();
+
+    UUID getProfileId();
+
+    ProfileOverriding getProfileOverriding();
+
+    void clearSceneState(UUID activeSceneId);
 }

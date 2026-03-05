@@ -3,12 +3,14 @@ package com.semantyca.aivox.streaming;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.model.IStream;
+import com.semantyca.aivox.model.stats.BroadcastingStats;
 import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
+import com.semantyca.mixpla.model.cnst.StreamStatus;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.core.Vertx;
@@ -93,10 +95,10 @@ public class RadioStationPool {
                     RadioStream radioStream = pool.computeIfAbsent(brandName, key -> {
                         LOGGER.infof("%s Creating new stream for brand", logPrefix(key));
                         PlaylistManager playlistManager = new PlaylistManager(key, brand.getId(), aivoxConfig, vertx, waitingAudioProvider,
-                                soundFragmentBrandService, brandService, fileHandler, segmentationService);
-                        StreamManager streamManager = new StreamManager(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
-                        streamManager.initializeStream();
-                        return new RadioStream(brand, streamManager, playlistManager);
+                                soundFragmentBrandService, fileHandler, segmentationService);
+                        Streamer streamer = new Streamer(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
+                        streamer.initialize();
+                        return new RadioStream(brand, streamer, playlistManager);
                     });
 
                     LOGGER.infof("%s Station stream ready (lazy initialization will occur on first use)", logPrefix(brandName));
@@ -149,4 +151,15 @@ public class RadioStationPool {
         return new ArrayList<>(pool.values());
     }
 
+    public Uni<BroadcastingStats> getLiveStatus(String name) {
+        BroadcastingStats stats = new BroadcastingStats();
+        IStream brand = pool.get(name);
+        if (brand != null) {
+            stats.setStatus(brand.getStatus());
+        } else {
+            stats.setStatus(StreamStatus.OFF_LINE);
+            stats.setAiControlAllowed(false);
+        }
+        return Uni.createFrom().item(stats);
+    }
 }
