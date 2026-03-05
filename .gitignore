@@ -31,3 +31,4 @@ src/main/resources/application-prod.properties
 /src/main/resources/application-dev.properties
 /temp/
 /temp_soundfragments_storage/
+/sessions_data/chat-sessions.db
