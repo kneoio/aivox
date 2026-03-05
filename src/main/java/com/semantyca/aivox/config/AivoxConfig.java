@@ -13,6 +13,13 @@ public interface AivoxConfig {
     @WithDefault("http://localhost:8080")
     String host();
 
+    @WithName("agent.api-key")
+    String agentApiKey();
+
+    @WithName("agent.url")
+    @WithDefault("http://localhost:38799")
+    String getAgentUrl();
+
     Path path();
 
     Ffmpeg ffmpeg();
@@ -24,17 +31,13 @@ public interface AivoxConfig {
     @WithName("station.whitelist")
     Optional<List<String>> stationWhitelist();
 
+    @WithName("merged")
+    @WithDefault("merged_tmp")
     String getPathForMerged();
 
-    String getFfprobePath();
-
-    String getAgentUrl();
-
-    String getAgentApiKey();
-
-    Object getElevenLabsOutputFormat();
-
-    String getElevenLabsApiKey();
+    @WithName("external.upload.files.path")
+    @WithDefault("external_uploads")
+    String getPathForExternalServiceUploads();
 
     String getPathUploads();
 
@@ -66,4 +69,6 @@ public interface AivoxConfig {
             String dir();
         }
     }
+
+
 }

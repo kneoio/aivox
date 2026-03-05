@@ -31,9 +31,11 @@ public interface LLMConfig {
     @WithName("google.credential-path")
     String getGcpCredentialsPath();
 
-    String getPathUploads();
 
+    @WithDefault("http://localhost:8080")
     String getHost();
 
+    @WithName("external.upload.files.path")
+    @WithDefault("external_uploads")
     String getPathForExternalServiceUploads();
 }

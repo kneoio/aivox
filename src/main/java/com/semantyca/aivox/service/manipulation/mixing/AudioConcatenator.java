@@ -34,7 +34,7 @@ public class AudioConcatenator {
 
         try {
             this.executor = new FFmpegExecutor(ffmpeg.getFFmpeg());
-            this.ffprobe = new FFprobe(config.getFfprobePath());
+            this.ffprobe = new FFprobe(config.ffprobe().path());
         } catch (IOException e) {
             throw new AudioMergeException("Failed to initialize FFmpeg executor", e);
         }
