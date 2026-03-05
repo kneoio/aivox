@@ -88,4 +88,8 @@ public class OneTimeStream extends AbstractStream {
                 .allMatch(e -> e.getActualStartTime() != null && e.getActualEndTime() != null);
     }
 
+    @Override
+    public UUID getMasterBrandId() {
+        return masterBrand.getId();
+    }
 }

@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.UUID;
 
 @Setter
 @Getter
@@ -86,5 +87,8 @@ public class RadioStream extends AbstractStream {
     }
 
 
-
+    @Override
+    public UUID getMasterBrandId() {
+        return null;
+    }
 }
