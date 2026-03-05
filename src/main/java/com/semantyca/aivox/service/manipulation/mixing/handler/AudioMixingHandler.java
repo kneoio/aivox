@@ -119,11 +119,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                             fragment2.setFileMetadataList(List.of(fileMetadata2));
                                                                                             fragment2.setType(PlaylistItemType.MIX_2_SONG);
 
-                                                                                            return playlistManager.addFragmentToSlice(fragment1, toQueueDTO.getPriority(),
-                                                                                                            stream.getBitRate(), toQueueDTO)
+                                                                                            return playlistManager.addFragmentToQueue(fragment1, toQueueDTO.getPriority())
                                                                                                     .chain(() ->
-                                                                                                            playlistManager.addFragmentToSlice(fragment2, toQueueDTO.getPriority(),
-                                                                                                                    stream.getBitRate(),  toQueueDTO));
+                                                                                                            playlistManager.addFragmentToQueue(fragment2, toQueueDTO.getPriority()));
                                                                                         });
                                                                             });
                                                                 });
@@ -187,11 +185,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                                 fragment2.setType(PlaylistItemType.MIX_2_SONG);
 
 
-                                                                                                return playlistManager.addFragmentToSlice(fragment1, toQueueDTO.getPriority(),
-                                                                                                                stream.getBitRate(), toQueueDTO)
+                                                                                                return playlistManager.addFragmentToQueue(fragment1, toQueueDTO.getPriority())
                                                                                                         .chain(() ->
-                                                                                                                playlistManager.addFragmentToSlice(fragment2, toQueueDTO.getPriority(),
-                                                                                                                        stream.getBitRate(), toQueueDTO));
+                                                                                                                playlistManager.addFragmentToQueue(fragment2, toQueueDTO.getPriority()));
                                                                                             });
                                                                                 });
                                                                     });
@@ -222,11 +218,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                     fragment.setFileMetadataList(List.of(fileMetadata));
                                     fragment.setType(PlaylistItemType.SONG);
 
-                                    return playlistManager.addFragmentToSlice(
+                                    return playlistManager.addFragmentToQueue(
                                             fragment,
-                                            toQueueDTO.getPriority(),
-                                            stream.getBitRate(),
-                                            toQueueDTO
+                                            toQueueDTO.getPriority()
                                     ).replaceWith(Boolean.TRUE);
                                 })));
     }
@@ -273,11 +267,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                 fileMetadata.setTemporaryFilePath(Path.of(finalPath));
                                                                                 crossfadeFragment.setFileMetadataList(List.of(fileMetadata));
 
-                                                                                return playlistManager.addFragmentToSlice(
+                                                                                return playlistManager.addFragmentToQueue(
                                                                                         crossfadeFragment,
-                                                                                        toQueueDTO.getPriority(),
-                                                                                        stream.getBitRate(),
-                                                                                        toQueueDTO
+                                                                                        toQueueDTO.getPriority()
                                                                                 ).replaceWith(Boolean.TRUE);
                                                                             });
                                                                 }))))));

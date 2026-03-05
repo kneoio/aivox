@@ -77,4 +77,6 @@ public interface IStream {
     ProfileOverriding getProfileOverriding();
 
     void clearSceneState(UUID activeSceneId);
+
+    void setAiAgentStatus(AiAgentStatus aiAgentStatus);
 }

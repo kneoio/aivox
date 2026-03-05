@@ -139,7 +139,6 @@ public class PlaylistManager {
                 if (playlistState.regularQueue.size() <= TRIGGER_SELF_MANAGING) {
                     int count = Math.random() < 0.5 ? 1 : 2;
                     LOGGER.infof("%s Self-managing: feeding %d frag(s)", logPrefix(), count);
-                    // Dispatch onto Vert.x event loop so reactive PG client executes in correct context
                     vertx.runOnContext(() -> feedFragments(count, false)
                             .subscribe().with(
                                     v -> LOGGER.debugf("%s Scheduler feed complete", logPrefix()),
@@ -208,7 +207,7 @@ public class PlaylistManager {
                 .select().first(quantityToFetch)
                 .onItem().transformToUniAndMerge(fragment -> {
                     try {
-                        return addFragmentToQueue(fragment);
+                        return addFragmentToQueue(fragment, 10);
                     } catch (Exception e) {
                         LOGGER.warnf("%s Skipping fragment %s: %s", logPrefix(), fragment.getId(), e.getMessage());
                         return Uni.createFrom().item(false);
@@ -223,7 +222,7 @@ public class PlaylistManager {
                 .replaceWithVoid();
     }
 
-    private Uni<Boolean> addFragmentToQueue(SoundFragment soundFragment) {
+    public Uni<Boolean> addFragmentToQueue(SoundFragment soundFragment, int priority) {
         LiveSoundFragment liveSoundFragment = new LiveSoundFragment();
         SongMetadata songMetadata = new SongMetadata(
                 soundFragment.getId(),
@@ -272,10 +271,17 @@ public class PlaylistManager {
                                                 return Uni.createFrom().item(false);
                                             }
                                             liveSoundFragment.setSegments(segments);
-                                            playlistState.regularQueue.add(liveSoundFragment);
-                                            LOGGER.infof("%s ✓ Added: %s - %s (%d segments)",
-                                                    logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
-                                                    segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                                            if (priority > 9) {
+                                                playlistState.regularQueue.add(liveSoundFragment);
+                                                LOGGER.infof("%s ✓ Added to regular queue: %s - %s (%d segments)",
+                                                        logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
+                                                        segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                                            } else {
+                                                playlistState.prioritizedQueue.add(liveSoundFragment);
+                                                LOGGER.infof("%s ✓ Added to prioritized queue: %s - %s (%d segments)",
+                                                        logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
+                                                        segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                                            }
                                             return Uni.createFrom().item(true);
                                         });
                             })
