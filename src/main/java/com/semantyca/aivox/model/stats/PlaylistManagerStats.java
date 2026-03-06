@@ -1,0 +1,60 @@
+package com.semantyca.aivox.model.stats;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.semantyca.aivox.config.HlsPlaylistConfig;
+import com.semantyca.aivox.dto.dashboard.LiveSoundFragmentDTO;
+import com.semantyca.aivox.service.playlist.PlaylistManager;
+import com.semantyca.aivox.streaming.LiveSoundFragment;
+import com.semantyca.aivox.streaming.SongMetadata;
+import com.semantyca.mixpla.model.cnst.LiveSongSource;
+import jakarta.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+@Getter
+@Setter
+public class PlaylistManagerStats {
+
+    private List<LiveSoundFragmentDTO> livePlaylist;
+    private List<LiveSoundFragmentDTO> queued;
+    private List<LiveSoundFragmentDTO> playedSongs;
+    private String brand;
+    private int duration;
+
+    @Inject
+    @JsonIgnore
+    HlsPlaylistConfig hlsPlaylistConfig;
+
+    public PlaylistManagerStats(PlaylistManager playlistManager, int duration) {
+     //   this.brand = playlistManager.getBrandSlug();
+     //   this.livePlaylist = mapList(playlistManager.getPrioritizedQueue(), LiveSongSource.PRIORITIZED);
+     //   this.queued = mapList(playlistManager.getObtainedByHlsPlaylist(), LiveSongSource.QUEUED);
+        this.duration = duration;
+
+    }
+
+    private List<LiveSoundFragmentDTO> mapList(Collection<LiveSoundFragment> list, LiveSongSource type) {
+        List<LiveSoundFragment> ordered = List.copyOf(list);
+        if (type == LiveSongSource.PRIORITIZED) {
+            ordered = new ArrayList<>(ordered);
+            Collections.reverse(ordered);
+        }
+
+        return ordered.stream().map(live -> {
+            SongMetadata metadata = live.getMetadata();
+            LiveSoundFragmentDTO dto = new LiveSoundFragmentDTO();
+            dto.setTitle(metadata.getTitle());
+            dto.setArtist(metadata.getArtist());
+            dto.setItemType(metadata.getItemType());
+            dto.setDuration(live.getSegments().values().iterator().next().size() * duration);
+            dto.setQueueType(type);
+            return dto;
+        }).toList();
+    }
+
+}

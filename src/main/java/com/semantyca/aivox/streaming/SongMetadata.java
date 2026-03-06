@@ -1,5 +1,6 @@
 package com.semantyca.aivox.streaming;
 
+import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import lombok.Data;
 import java.util.UUID;
 
@@ -12,6 +13,7 @@ public class SongMetadata {
     private String genre;
     private int duration;  // seconds
     private String languageCode;
+    private PlaylistItemType itemType;
     
     public SongMetadata() {}
     

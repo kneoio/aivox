@@ -1,4 +1,4 @@
-package com.semantyca.aivox.dto.live;
+package com.semantyca.aivox.dto.dashboard;
 
 import com.semantyca.mixpla.model.cnst.LiveSongSource;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
