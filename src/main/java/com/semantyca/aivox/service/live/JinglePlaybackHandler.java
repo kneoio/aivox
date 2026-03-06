@@ -1,19 +1,19 @@
 package com.semantyca.aivox.service.live;
 
 import com.semantyca.aivox.config.AivoxConfig;
-import com.semantyca.aivox.dto.queue.AddToQueueDTO;
 import com.semantyca.aivox.model.stream.LiveScene;
 import com.semantyca.aivox.model.stream.PendingSongEntry;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.AiAgentService;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
 import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
-import com.semantyca.aivox.service.manipulation.mixing.ConcatenationType;
-import com.semantyca.aivox.service.manipulation.mixing.MergingType;
 import com.semantyca.aivox.service.manipulation.mixing.handler.AudioMixingHandler;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.util.BrandLogger;
+import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
 import com.semantyca.mixpla.model.Scene;
+import com.semantyca.mixpla.model.cnst.ConcatenationType;
+import com.semantyca.mixpla.model.cnst.MergingType;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.stream.IStream;

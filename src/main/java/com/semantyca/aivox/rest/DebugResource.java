@@ -1,7 +1,10 @@
 package com.semantyca.aivox.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.semantyca.aivox.service.QueueService;
 import com.semantyca.aivox.service.StreamingService;
+import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
+import com.semantyca.mixpla.model.cnst.MergingType;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -11,6 +14,7 @@ import org.jboss.logging.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @ApplicationScoped
 public class DebugResource {
@@ -20,18 +24,16 @@ public class DebugResource {
     
     @Inject
     StreamingService streamingService;
+
+    @Inject
+    QueueService queueService;
     
     public void setupRoutes(Router router) {
         String path = "/api/debug";
-        
-        // Create/initialize a stream
         router.route(HttpMethod.POST, path + "/stream/:brand").handler(this::createStream);
-        
-        // Stop a stream
         router.route(HttpMethod.DELETE, path + "/stream/:brand").handler(this::stopStream);
-        
-        // List all active streams
         router.route(HttpMethod.GET, path + "/streams").handler(this::listStreams);
+        router.route(HttpMethod.POST, path + "/queue/:brand").handler(this::testAddToQueue);
     }
     
     private void createStream(RoutingContext rc) {
@@ -115,14 +117,14 @@ public class DebugResource {
                 stations -> {
                     Map<String, Object> response = new HashMap<>();
                     response.put("activeStations", stations.size());
-                    
+
                     stations.forEach(bundle -> {
                         Map<String, Object> stationInfo = new HashMap<>();
                         stationInfo.put("brand", bundle.getSlugName());
                         stationInfo.put("active", bundle.isActive());
                         stationInfo.put("createdAt", bundle.getCreatedAt());
                     });
-                    
+
                     try {
                         String jsonResponse = objectMapper.writeValueAsString(response);
                         rc.response()
@@ -142,6 +144,56 @@ public class DebugResource {
                         .setStatusCode(500)
                         .putHeader("Content-Type", "application/json")
                         .end("{\"error\": \"Failed to list streams: " + failure.getMessage() + "\"}");
+                }
+            );
+    }
+
+    private void testAddToQueue(RoutingContext rc) {
+        String brand = rc.pathParam("brand").toLowerCase();
+        String uploadId = UUID.randomUUID().toString();
+
+        AddToQueueDTO dto = new AddToQueueDTO();
+        dto.setMergingMethod(MergingType.NOT_MIXED);
+        dto.setPriority(100);
+
+        Map<String, String> filePaths = new HashMap<>();
+        filePaths.put("main", "/test/audio/file.mp3");
+        dto.setFilePaths(filePaths);
+
+        LOGGER.info("[DebugResource] Testing addToQueue for brand: " + brand + ", uploadId: " + uploadId);
+
+        queueService.addToQueue(brand, dto, uploadId)
+            .subscribe()
+            .with(
+                result -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("brand", brand);
+                    response.put("uploadId", uploadId);
+                    response.put("result", result);
+                    response.put("mergingMethod", dto.getMergingMethod());
+                    response.put("status", "processed");
+
+                    try {
+                        String jsonResponse = objectMapper.writeValueAsString(response);
+                        rc.response()
+                            .putHeader("Content-Type", "application/json")
+                            .end(jsonResponse);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to serialize JSON response", e);
+                        rc.response()
+                            .setStatusCode(500)
+                            .putHeader("Content-Type", "application/json")
+                            .end("{\"error\": \"Internal server error\"}");
+                    }
+
+                    LOGGER.info("[DebugResource] addToQueue completed for uploadId: " + uploadId + ", result: " + result);
+                },
+                failure -> {
+                    LOGGER.error("[DebugResource] addToQueue failed for brand: " + brand + ", uploadId: " + uploadId, failure);
+                    rc.response()
+                        .setStatusCode(500)
+                        .putHeader("Content-Type", "application/json")
+                        .end("{\"error\": \"Failed to add to queue: " + failure.getMessage() + "\"}");
                 }
             );
     }

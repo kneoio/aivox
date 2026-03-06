@@ -1,15 +1,15 @@
 package com.semantyca.aivox.service.manipulation.mixing.handler;
 
 import com.semantyca.aivox.config.AivoxConfig;
-import com.semantyca.aivox.dto.queue.AddToQueueDTO;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.AiAgentService;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
 import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
-import com.semantyca.aivox.service.manipulation.mixing.ConcatenationType;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
+import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;

@@ -1,18 +1,18 @@
 package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.config.AivoxConfig;
-import com.semantyca.aivox.dto.queue.AddToQueueDTO;
-import com.semantyca.aivox.dto.queue.SSEProgressDTO;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
 import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
-import com.semantyca.aivox.service.manipulation.mixing.ConcatenationType;
-import com.semantyca.aivox.service.manipulation.mixing.MergingType;
 import com.semantyca.aivox.service.manipulation.mixing.handler.AudioMixingHandler;
 import com.semantyca.aivox.service.manipulation.mixing.handler.IntroSongHandler;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.aivox.streaming.RadioStationPool;
+import com.semantyca.core.dto.SSEProgressDTO;
 import com.semantyca.core.model.cnst.SSEProgressStatus;
+import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
+import com.semantyca.mixpla.model.cnst.ConcatenationType;
+import com.semantyca.mixpla.model.cnst.MergingType;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
 import com.semantyca.mixpla.model.stream.IStream;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;

@@ -2,6 +2,7 @@ package com.semantyca.aivox.service.manipulation.mixing;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
+import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;

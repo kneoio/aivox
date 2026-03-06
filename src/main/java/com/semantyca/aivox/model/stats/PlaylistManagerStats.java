@@ -1,13 +1,10 @@
 package com.semantyca.aivox.model.stats;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.semantyca.aivox.config.HlsPlaylistConfig;
 import com.semantyca.aivox.dto.dashboard.LiveSoundFragmentDTO;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.aivox.streaming.LiveSoundFragment;
 import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.mixpla.model.cnst.LiveSongSource;
-import jakarta.inject.Inject;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,9 +23,7 @@ public class PlaylistManagerStats {
     private String brand;
     private int duration;
 
-    @Inject
-    @JsonIgnore
-    HlsPlaylistConfig hlsPlaylistConfig;
+
 
     public PlaylistManagerStats(PlaylistManager playlistManager, int duration) {
      //   this.brand = playlistManager.getBrandSlug();

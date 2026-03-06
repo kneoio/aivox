@@ -95,7 +95,7 @@
         <dependency>
             <groupId>io.kneo</groupId>
             <artifactId>2next</artifactId>
-            <version>1.2.0</version>
+            <version>1.2.1</version>
         </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
