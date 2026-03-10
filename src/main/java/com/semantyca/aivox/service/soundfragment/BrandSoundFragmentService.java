@@ -2,11 +2,11 @@ package com.semantyca.aivox.service.soundfragment;
 
 import com.semantyca.aivox.dto.BrandSoundFragmentDTO;
 import com.semantyca.aivox.dto.SoundFragmentDTO;
+import com.semantyca.aivox.dto.UploadFileDTO;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentBrandRepository;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.mixpla.model.soundfragment.BrandSoundFragment;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
-import io.kneo.core.dto.form.upload.UploadFileDTO;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.model.user.SuperUser;
