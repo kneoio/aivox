@@ -137,7 +137,7 @@ public class PlaylistManager implements IPlaylistManager {
         scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                if (playlistState.regularQueue.size() <= TRIGGER_SELF_MANAGING) {
+                if (playlistState.regularQueue.size() <= TRIGGER_SELF_MANAGING && false) {
                     int count = Math.random() < 0.5 ? 1 : 2;
                     LOGGER.infof("%s Self-managing: feeding %d frag(s)", logPrefix(), count);
                     vertx.runOnContext(() -> feedFragments(count, false)
