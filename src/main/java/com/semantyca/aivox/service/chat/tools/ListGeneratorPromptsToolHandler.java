@@ -4,9 +4,9 @@ import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import com.anthropic.models.messages.ToolUseBlock;
-import com.semantyca.aivox.dto.filter.PromptFilterDTO;
 import com.semantyca.aivox.service.PromptService;
 import com.semantyca.mixpla.model.cnst.PromptType;
+import com.semantyca.mixpla.model.filter.PromptFilter;
 import io.kneo.core.model.user.SuperUser;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonArray;
@@ -38,7 +38,7 @@ public class ListGeneratorPromptsToolHandler extends BaseToolHandler {
 
         handler.sendProcessingChunk(chunkHandler, connectionId, "Fetching available generator prompts for " + brandName + "...");
 
-        PromptFilterDTO filter = new PromptFilterDTO();
+        PromptFilter filter = new PromptFilter();
         filter.setPromptType(PromptType.GENERATOR);
         filter.setEnabled(true);
         filter.setMaster(true);

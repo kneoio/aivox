@@ -12,7 +12,6 @@ import com.semantyca.aivox.model.cnst.ChatType;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.ListenerService;
 import com.semantyca.aivox.service.chat.tools.AddToQueueTool;
-import com.semantyca.aivox.service.chat.tools.AddToQueueToolHandler;
 import com.semantyca.aivox.service.chat.tools.AudienceTool;
 import com.semantyca.aivox.service.chat.tools.AudienceToolHandler;
 import com.semantyca.aivox.service.chat.tools.GetStations;
@@ -245,11 +244,6 @@ public class PublicChatService extends ChatService {
         } else if ("search_brand_sound_fragments".equals(toolUse.name())) {
             return SearchBrandSoundFragmentsToolHandler.handle(
                     toolUse, inputMap, aiHelperService, chunkHandler, connectionId, conversationHistory, getFollowUpPrompt(), streamFn
-            );
-        } else if ("add_to_queue".equals(toolUse.name())) {
-            String djVoiceId = assistantNameByConnectionId.get(connectionId + "_voice");
-            return AddToQueueToolHandler.handle(
-                    toolUse, inputMap, queueService, aiHelperService, elevenLabsClient, config, djVoiceId, chunkHandler, connectionId, conversationHistory, getFollowUpPrompt(), streamFn
             );
         } else if ("perplexity_search".equals(toolUse.name())) {
             return PerplexitySearchToolHandler.handle(

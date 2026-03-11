@@ -10,7 +10,6 @@ import com.semantyca.aivox.config.LLMConfig;
 import com.semantyca.aivox.model.cnst.ChatType;
 import com.semantyca.aivox.service.ListenerService;
 import com.semantyca.aivox.service.chat.tools.AddToQueueTool;
-import com.semantyca.aivox.service.chat.tools.AddToQueueToolHandler;
 import com.semantyca.aivox.service.chat.tools.AudienceTool;
 import com.semantyca.aivox.service.chat.tools.AudienceToolHandler;
 import com.semantyca.aivox.service.chat.tools.GetStations;
@@ -102,11 +101,7 @@ public class OwnerChatService extends ChatService {
             return SearchBrandSoundFragmentsToolHandler.handle(
                     toolUse, inputMap, aiHelperService, chunkHandler, connectionId, conversationHistory, followUpPrompt, streamFn
             );
-        } else if ("add_to_queue".equals(toolUse.name())) {
-            String djVoiceId = assistantNameByConnectionId.get(connectionId + "_voice");
-            return AddToQueueToolHandler.handle(
-                    toolUse, inputMap, queueService, aiHelperService, elevenLabsClient, config, djVoiceId, chunkHandler, connectionId, conversationHistory, followUpPrompt, streamFn
-            );
+
         } else if ("control_station".equals(toolUse.name())) {
             return RadioStationControlToolHandler.handle(
                     toolUse, inputMap, radioService, chunkHandler, connectionId, conversationHistory, followUpPrompt, streamFn

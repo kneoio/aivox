@@ -1,7 +1,7 @@
 package com.semantyca.aivox.messaging;
 
 import com.semantyca.aivox.service.QueueService;
-import com.semantyca.mixpla.dto.queue.QueueMessageDTO;
+import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -17,17 +17,14 @@ public class QueueConsumer {
     QueueService queueService;
 
     @Incoming("queue-requests")
-    public Uni<Void> consume(QueueMessageDTO message) {
-        LOGGER.info("Consuming queue request for brand: " + message.getBrandName() +
-                ", uploadId: " + message.getUploadId() +
-                ", mergingMethod: " + message.getDto().getMergingMethod());
+    public Uni<Void> consume(SongQueueMessageDTO message) {
 
-        return queueService.addToQueue(message.getBrandName(), message.getDto(), message.getUploadId())
+        return queueService.addToQueue(message)
                 .onItem().invoke(result ->
-                        LOGGER.info("Queue request completed for uploadId: " + message.getUploadId() + ", result: " + result)
+                        LOGGER.info("Queue request completed for uploadId: " + message.getSceneId() + ", result: " + result)
                 )
                 .onFailure().invoke(e ->
-                        LOGGER.error("Queue request failed for uploadId: " + message.getUploadId(), e)
+                        LOGGER.error("Queue request failed for uploadId: " + message.getSceneId(), e)
                 )
                 .replaceWithVoid();
     }

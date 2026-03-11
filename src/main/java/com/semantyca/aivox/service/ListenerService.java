@@ -2,7 +2,6 @@ package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.dto.BrandListenerDTO;
 import com.semantyca.aivox.dto.ListenerDTO;
-import com.semantyca.aivox.dto.filter.ListenerFilterDTO;
 import com.semantyca.aivox.repository.ListenersRepository;
 import com.semantyca.core.model.UserData;
 import com.semantyca.mixpla.model.BrandListener;
@@ -17,33 +16,25 @@ import io.kneo.core.service.AbstractService;
 import io.kneo.core.service.UserService;
 import io.kneo.core.util.WebHelper;
 import io.smallrye.mutiny.Uni;
-import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ListenerService extends AbstractService<Listener, ListenerDTO> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ListenerService.class);
     private final ListenersRepository repository;
-    private final Validator validator;
     private BrandService brandService;
 
     protected ListenerService() {
         super();
         this.repository = null;
-        this.validator = null;
     }
 
     @Inject
@@ -53,43 +44,9 @@ public class ListenerService extends AbstractService<Listener, ListenerDTO> {
                            ListenersRepository repository) {
         super(userService);
         this.brandService = brandService;
-        this.validator = validator;
         this.repository = repository;
     }
 
-    public Uni<List<ListenerDTO>> getAllDTO(final int limit, final int offset, final IUser user, final ListenerFilterDTO filterDTO) {
-        assert repository != null;
-        ListenerFilter filter = toFilter(filterDTO);
-        return repository.getAll(limit, offset, false, user, filter)
-                .chain(list -> {
-                    if (list.isEmpty()) {
-                        return Uni.createFrom().item(List.of());
-                    } else {
-                        List<Uni<ListenerDTO>> unis = list.stream()
-                                .map(this::mapToDTO)
-                                .collect(Collectors.toList());
-                        return Uni.join().all(unis).andFailFast();
-                    }
-                });
-    }
-
-    public Uni<Integer> getAllCount(final IUser user, final ListenerFilterDTO filterDTO) {
-        assert repository != null;
-        ListenerFilter filter = toFilter(filterDTO);
-        return repository.getAllCount(user, false, filter);
-    }
-
-    public Uni<ListenerDTO> getDTOTemplate(IUser user, LanguageCode code) {
-        return brandService.getAll(10, 0, user)
-                .onItem().transform(userRadioStations -> {
-                    ListenerDTO dto = new ListenerDTO();
-                    dto.setAuthor(user.getUserName());
-                    dto.setLastModifier(user.getUserName());
-                    dto.getLocalizedName().put(LanguageCode.en, "");
-                    dto.getNickName().put(LanguageCode.en, Set.of());
-                    return dto;
-                });
-    }
 
     @Override
     public Uni<ListenerDTO> getDTO(UUID uuid, IUser user, LanguageCode code) {
@@ -108,11 +65,10 @@ public class ListenerService extends AbstractService<Listener, ListenerDTO> {
         return repository.getBrandsForListener(listener);
     }
 
-    public Uni<List<BrandListenerDTO>> getBrandListeners(String brandName, int limit, final int offset, IUser user, ListenerFilterDTO filterDTO) {
+    public Uni<List<BrandListenerDTO>> getBrandListeners(String brandName, int limit, final int offset, IUser user, ListenerFilter filter) {
         assert repository != null;
         assert brandService != null;
 
-        ListenerFilter filter = toFilter(filterDTO);
         return repository.findForBrand(brandName, limit, offset, user, false, filter)
                 .chain(list -> {
                     if (list.isEmpty()) {
@@ -269,26 +225,6 @@ public class ListenerService extends AbstractService<Listener, ListenerDTO> {
                     dto.setListenerDTO(listenerDTO);
                     return dto;
                 });
-    }
-
-
-    private ListenerFilter toFilter(ListenerFilterDTO dto) {
-        if (dto == null) {
-            return null;
-        }
-
-        ListenerFilter filter = new ListenerFilter();
-        filter.setActivated(dto.isActivated());
-        filter.setCountries(dto.getCountries());
-        filter.setSearchTerm(dto.getSearchTerm());
-
-        return filter;
-    }
-
-
-    @Override
-    public Uni<Integer> delete(String id, IUser user) {
-        return null;
     }
 
 }

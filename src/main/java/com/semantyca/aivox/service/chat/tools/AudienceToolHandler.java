@@ -5,8 +5,8 @@ import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.semantyca.aivox.dto.ListenerDTO;
-import com.semantyca.aivox.dto.filter.ListenerFilterDTO;
 import com.semantyca.aivox.service.ListenerService;
+import com.semantyca.mixpla.model.filter.ListenerFilter;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.SuperUser;
 import io.kneo.officeframe.cnst.CountryCode;
@@ -59,7 +59,7 @@ public class AudienceToolHandler extends BaseToolHandler {
 
         String finalSearchTerm = searchTerm.isEmpty() ? null : searchTerm;
 
-        ListenerFilterDTO filter = new ListenerFilterDTO();
+        ListenerFilter filter = new ListenerFilter();
         if (finalSearchTerm != null) {
             filter.setSearchTerm(finalSearchTerm);
         }
@@ -83,7 +83,7 @@ public class AudienceToolHandler extends BaseToolHandler {
             }
         }
 
-        ListenerFilterDTO finalFilter = filter.isActivated() ? filter : null;
+        ListenerFilter finalFilter = filter.isActivated() ? filter : null;
 
         return listenerService.getBrandListeners(stationSlug, 100, 0, SuperUser.build(), finalFilter)
                 .flatMap(brandListeners -> {

@@ -3,7 +3,6 @@ package com.semantyca.aivox.rest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semantyca.aivox.service.QueueService;
 import com.semantyca.aivox.service.StreamingService;
-import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
 import com.semantyca.mixpla.model.cnst.MergingType;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
@@ -149,52 +148,7 @@ public class DebugResource {
     }
 
     private void testAddToQueue(RoutingContext rc) {
-        String brand = rc.pathParam("brand").toLowerCase();
-        String uploadId = UUID.randomUUID().toString();
 
-        AddToQueueDTO dto = new AddToQueueDTO();
-        dto.setMergingMethod(MergingType.NOT_MIXED);
-        dto.setPriority(100);
 
-        Map<String, String> filePaths = new HashMap<>();
-        filePaths.put("main", "/test/audio/file.mp3");
-        dto.setFilePaths(filePaths);
-
-        LOGGER.info("[DebugResource] Testing addToQueue for brand: " + brand + ", uploadId: " + uploadId);
-
-        queueService.addToQueue(brand, dto, uploadId)
-            .subscribe()
-            .with(
-                result -> {
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("brand", brand);
-                    response.put("uploadId", uploadId);
-                    response.put("result", result);
-                    response.put("mergingMethod", dto.getMergingMethod());
-                    response.put("status", "processed");
-
-                    try {
-                        String jsonResponse = objectMapper.writeValueAsString(response);
-                        rc.response()
-                            .putHeader("Content-Type", "application/json")
-                            .end(jsonResponse);
-                    } catch (Exception e) {
-                        LOGGER.error("Failed to serialize JSON response", e);
-                        rc.response()
-                            .setStatusCode(500)
-                            .putHeader("Content-Type", "application/json")
-                            .end("{\"error\": \"Internal server error\"}");
-                    }
-
-                    LOGGER.info("[DebugResource] addToQueue completed for uploadId: " + uploadId + ", result: " + result);
-                },
-                failure -> {
-                    LOGGER.error("[DebugResource] addToQueue failed for brand: " + brand + ", uploadId: " + uploadId, failure);
-                    rc.response()
-                        .setStatusCode(500)
-                        .putHeader("Content-Type", "application/json")
-                        .end("{\"error\": \"Failed to add to queue: " + failure.getMessage() + "\"}");
-                }
-            );
     }
 }

@@ -1,11 +1,9 @@
 package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.dto.PromptDTO;
-import com.semantyca.aivox.dto.filter.PromptFilterDTO;
 import com.semantyca.aivox.repository.prompt.PromptRepository;
-import com.semantyca.core.model.cnst.LanguageTag;
 import com.semantyca.mixpla.model.Prompt;
-import io.kneo.core.dto.DocumentAccessDTO;
+import com.semantyca.mixpla.model.filter.PromptFilter;
 import io.kneo.core.localization.LanguageCode;
 import io.kneo.core.model.user.IUser;
 import io.kneo.core.service.AbstractService;
@@ -28,7 +26,7 @@ public class PromptService extends AbstractService<Prompt, PromptDTO> {
         this.repository = repository;
     }
 
-    public Uni<List<PromptDTO>> getAllDTO(final int limit, final int offset, final IUser user, final PromptFilterDTO filter) {
+    public Uni<List<PromptDTO>> getAllDTO(final int limit, final int offset, final IUser user, final PromptFilter filter) {
         return repository.getAll(limit, offset, false, user, filter)
                 .chain(list -> {
                     if (list.isEmpty()) {
@@ -42,34 +40,13 @@ public class PromptService extends AbstractService<Prompt, PromptDTO> {
                 });
     }
 
-    public Uni<List<Prompt>> getAll(final int limit, final int offset, final IUser user, final PromptFilterDTO filter) {
+    public Uni<List<Prompt>> getAll(final int limit, final int offset, final IUser user, final PromptFilter filter) {
         return repository.getAll(limit, offset, false, user, filter);
-    }
-
-    public Uni<Integer> getAllCount(final IUser user, final PromptFilterDTO filter) {
-        return repository.getAllCount(user, false, filter);
-    }
-
-    public Uni<Prompt> getById(UUID id, IUser user) {
-        return repository.findById(id, user, false);
-    }
-
-    public Uni<List<Prompt>> getByIds(List<UUID> ids, IUser user) {
-        return repository.findByIds(ids, user);
     }
 
     @Override
     public Uni<PromptDTO> getDTO(UUID id, IUser user, LanguageCode language) {
         return repository.findById(id, user, false).chain(this::mapToDTO);
-    }
-
-    public Uni<PromptDTO> upsert(String id, PromptDTO dto, IUser user) {
-        Prompt entity = buildEntity(dto);
-        if (id == null) {
-            return repository.insert(entity, user).chain(this::mapToDTO);
-        } else {
-            return repository.update(UUID.fromString(id), entity, user).chain(this::mapToDTO);
-        }
     }
 
     public Uni<Prompt> insert(Prompt entity, IUser user) {
@@ -89,9 +66,6 @@ public class PromptService extends AbstractService<Prompt, PromptDTO> {
         return repository.delete(UUID.fromString(id), user);
     }
 
-    public Uni<Prompt> findByMasterAndLanguage(UUID masterId, LanguageTag languageCode, boolean includeArchived) {
-        return repository.findByMasterAndLanguage(masterId, languageCode, includeArchived);
-    }
 
     private Uni<PromptDTO> mapToDTO(Prompt doc) {
         return Uni.combine().all().unis(
@@ -121,35 +95,4 @@ public class PromptService extends AbstractService<Prompt, PromptDTO> {
         });
     }
 
-    private Prompt buildEntity(PromptDTO dto) {
-        Prompt doc = new Prompt();
-        doc.setId(dto.getId());
-        doc.setEnabled(dto.isEnabled());
-        doc.setPrompt(dto.getPrompt());
-        doc.setDescription(dto.getDescription());
-        doc.setPromptType(dto.getPromptType());
-        doc.setLanguageTag(LanguageTag.fromTag(dto.getLanguageTag()));
-        doc.setMaster(dto.isMaster());
-        doc.setLocked(dto.isLocked());
-        doc.setTitle(dto.getTitle());
-        doc.setBackup(dto.getBackup());
-        doc.setPodcast(dto.isPodcast());
-        doc.setDraftId(dto.getDraftId());
-        if (dto.isMaster()) {
-            doc.setMasterId(null);
-        } else {
-            doc.setMasterId(dto.getMasterId());
-        }
-        doc.setVersion(dto.getVersion());
-        return doc;
-    }
-
-    public Uni<List<DocumentAccessDTO>> getDocumentAccess(UUID documentId, IUser user) {
-        return repository.getDocumentAccessInfo(documentId, user)
-                .onItem().transform(accessInfoList ->
-                        accessInfoList.stream()
-                                .map(this::mapToDocumentAccessDTO)
-                                .collect(Collectors.toList())
-                );
-    }
 }

@@ -1,11 +1,11 @@
 package com.semantyca.aivox.repository.prompt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.dto.filter.PromptFilterDTO;
 import com.semantyca.core.model.cnst.LanguageTag;
 import com.semantyca.mixpla.model.Prompt;
 import com.semantyca.mixpla.model.ScenePrompt;
 import com.semantyca.mixpla.model.cnst.PromptType;
+import com.semantyca.mixpla.model.filter.PromptFilter;
 import com.semantyca.mixpla.repository.MixplaNameResolver;
 import io.kneo.core.model.embedded.DocumentAccessInfo;
 import io.kneo.core.model.user.IUser;
@@ -45,7 +45,7 @@ public class PromptRepository extends AsyncRepository {
         this.queryBuilder = queryBuilder;
     }
 
-    public Uni<List<Prompt>> getAll(int limit, int offset, boolean includeArchived, final IUser user, final PromptFilterDTO filter) {
+    public Uni<List<Prompt>> getAll(int limit, int offset, boolean includeArchived, final IUser user, final PromptFilter filter) {
         String sql = queryBuilder.buildGetAllQuery(
                 entityData.getTableName(),
                 entityData.getRlsName(),
@@ -64,22 +64,6 @@ public class PromptRepository extends AsyncRepository {
                 .collect().asList();
     }
 
-    public Uni<Integer> getAllCount(IUser user, boolean includeArchived, final PromptFilterDTO filter) {
-        String sql = "SELECT COUNT(*) FROM " + entityData.getTableName() + " t, " + entityData.getRlsName() + " rls " +
-                "WHERE t.id = rls.entity_id AND rls.reader = " + user.getId();
-
-        if (!includeArchived) {
-            sql += " AND t.archived = 0";
-        }
-
-        if (filter != null && filter.isActivated()) {
-            sql += queryBuilder.buildFilterConditions(filter);
-        }
-
-        return client.query(sql)
-                .execute()
-                .onItem().transform(rows -> rows.iterator().next().getInteger(0));
-    }
 
     public Uni<Prompt> findById(UUID id, IUser user, boolean includeArchived) {
         String sql = "SELECT theTable.*, rls.* " +

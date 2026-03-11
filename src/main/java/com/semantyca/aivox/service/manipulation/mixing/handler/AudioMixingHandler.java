@@ -8,7 +8,8 @@ import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.model.FileMetadata;
-import com.semantyca.mixpla.dto.queue.AddToQueueDTO;
+import com.semantyca.mixpla.dto.queue.SongInfoDTO;
+import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
@@ -65,17 +66,17 @@ public class AudioMixingHandler extends MixingHandlerBase {
         this.tempBaseDir = config.getPathUploads() + "/audio-processing";
     }
 
-    public Uni<Boolean> handleSongIntroSong(IStream stream, AddToQueueDTO toQueueDTO) {
+    public Uni<Boolean> handleSongIntroSong(IStream stream, SongQueueMessageDTO toQueueDTO) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        UUID soundFragmentId1 = toQueueDTO.getSoundFragments().get("song1");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
         String introSongPath = toQueueDTO.getFilePaths().get("audio1");
-        UUID soundFragmentId2 = toQueueDTO.getSoundFragments().get("song2");
+        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get("song2");
         MixingProfile settings = MixingProfile.randomProfile(12345L);
         LOGGER.info("Applied Mixing sis {}", settings.description);
 
         return aiAgentService.getById(stream.getAiAgentId(), SuperUser.build(), LanguageCode.en)
                 .chain(aiAgent -> {
-                    return soundFragmentService.getById(soundFragmentId1)
+                    return soundFragmentService.getById(songInfo1.getSongId())
                             .chain(soundFragment1 -> {
                                 return soundFragmentRepository.getFirstFile(soundFragment1.getId())
                                         .chain(songMetadata1 -> {
@@ -93,7 +94,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                 0.2);
                                                     })
                                                     .chain(actualTempMixPath -> {
-                                                        return soundFragmentService.getById(soundFragmentId2)
+                                                        return soundFragmentService.getById(songInfo2.getSongId())
                                                                 .chain(soundFragment2 -> {
                                                                     return soundFragmentRepository.getFirstFile(soundFragment2.getId())
                                                                             .chain(songMetadata2 -> {
@@ -131,18 +132,18 @@ public class AudioMixingHandler extends MixingHandlerBase {
                 });
     }
 
-    public Uni<Boolean> handleIntroSongIntroSong(IStream stream, AddToQueueDTO toQueueDTO) {
+    public Uni<Boolean> handleIntroSongIntroSong(IStream stream, SongQueueMessageDTO message) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        String part1 = toQueueDTO.getFilePaths().get("audio1");           // intro1
-        UUID part2 = toQueueDTO.getSoundFragments().get("song1");         // song
-        String part3 = toQueueDTO.getFilePaths().get("audio2");           // intro2
-        UUID part4 = toQueueDTO.getSoundFragments().get("song2");         // next song
+        String part1 = message.getFilePaths().get("audio1");           // intro1
+        SongInfoDTO songInfo1 = message.getSongs().get("song1");       // song
+        String part2 = message.getFilePaths().get("audio2");           // intro2
+        SongInfoDTO songInfo2 = message.getSongs().get("song2");      // next song
         MixingProfile settings = MixingProfile.randomProfile(12345L);
         LOGGER.info("Applied Mixing isis {}", settings.description);
 
         return aiAgentService.getById(stream.getAiAgentId(), SuperUser.build(), LanguageCode.en)
                 .chain(aiAgent -> {
-                    return soundFragmentService.getById(part2)
+                    return soundFragmentService.getById(songInfo1.getSongId())
                             .chain(soundFragment1 -> {
                                 return soundFragmentRepository.getFirstFile(soundFragment1.getId())
                                         .chain(songMetadata1 -> {
@@ -155,10 +156,10 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                         return mixIntroSongPlusIntro(
                                                                 part1,                     // intro1
                                                                 tempPath1.toString(),      // song
-                                                                part3,                     // intro2
+                                                                part2,                     // intro2
                                                                 tempMixPath                // output
                                                         ).chain(actualTempMixPath -> {
-                                                            return soundFragmentService.getById(part4)
+                                                            return soundFragmentService.getById(songInfo2.getSongId())
                                                                     .chain(soundFragment2 -> {
                                                                         return soundFragmentRepository.getFirstFile(soundFragment2.getId())
                                                                                 .chain(songMetadata2 -> {
@@ -185,9 +186,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                                 fragment2.setType(PlaylistItemType.MIX_2_SONG);
 
 
-                                                                                                return playlistManager.addFragmentToQueue(fragment1, toQueueDTO.getPriority())
+                                                                                                return playlistManager.addFragmentToQueue(fragment1, message.getPriority())
                                                                                                         .chain(() ->
-                                                                                                                playlistManager.addFragmentToQueue(fragment2, toQueueDTO.getPriority()));
+                                                                                                                playlistManager.addFragmentToQueue(fragment2, message.getPriority()));
                                                                                             });
                                                                                 });
                                                                     });
@@ -198,13 +199,13 @@ public class AudioMixingHandler extends MixingHandlerBase {
                 });
     }
 
-    public Uni<Boolean> handleSongOnly(IStream stream, AddToQueueDTO toQueueDTO) {
+    public Uni<Boolean> handleSongOnly(IStream stream, SongQueueMessageDTO toQueueDTO) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        UUID soundFragmentId = toQueueDTO.getSoundFragments().get("song1");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
 
         LOGGER.info("Handling single song feed");
 
-        return soundFragmentService.getById(soundFragmentId)
+        return soundFragmentService.getById(songInfo1.getSongId())
                 .chain(soundFragment -> soundFragmentRepository.getFirstFile(soundFragment.getId())
                         .chain(songMetadata -> songMetadata.materializeFileStream(tempBaseDir)
                                 .chain(tempPath -> {
@@ -225,18 +226,18 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                 })));
     }
 
-    public Uni<Boolean> handleConcatenationAndFeed(IStream stream, AddToQueueDTO toQueueDTO, ConcatenationType concatType) {
+    public Uni<Boolean> handleConcatenationAndFeed(IStream stream, SongQueueMessageDTO toQueueDTO, ConcatenationType concatType) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        UUID songId1 = toQueueDTO.getSoundFragments().get("song1");
-        UUID songId2 = toQueueDTO.getSoundFragments().get("song2");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
+        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get("song2");
 
         LOGGER.info("Applied Concatenation Type {}", concatType);
 
-        return soundFragmentService.getById(songId1)
+        return soundFragmentService.getById(songInfo1.getSongId())
                 .chain(sf1 -> soundFragmentRepository.getFirstFile(sf1.getId())
                         .chain(meta1 -> meta1.materializeFileStream(tempBaseDir)
                                 .chain(tempPath1 ->
-                                        soundFragmentService.getById(songId2)
+                                        soundFragmentService.getById(songInfo2.getSongId())
                                                 .chain(sf2 -> soundFragmentRepository.getFirstFile(sf2.getId())
                                                         .chain(meta2 -> meta2.materializeFileStream(tempBaseDir)
                                                                 .chain(tempPath2 -> {
