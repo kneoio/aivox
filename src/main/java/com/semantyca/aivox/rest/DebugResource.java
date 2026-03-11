@@ -1,9 +1,9 @@
 package com.semantyca.aivox.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.semantyca.aivox.service.QueueService;
 import com.semantyca.aivox.service.StreamingService;
-import com.semantyca.mixpla.model.cnst.MergingType;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -13,13 +13,12 @@ import org.jboss.logging.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @ApplicationScoped
 public class DebugResource {
     
     private static final Logger LOGGER = Logger.getLogger(DebugResource.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
     
     @Inject
     StreamingService streamingService;
