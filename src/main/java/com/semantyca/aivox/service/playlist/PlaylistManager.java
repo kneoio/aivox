@@ -217,8 +217,7 @@ public class PlaylistManager implements IPlaylistManager {
                 .collect().asList()
                 .onItem().invoke(processed -> {
                     long successCount = processed.stream().filter(b -> b != null && b).count();
-                    LOGGER.infof("%s Completed: %d/%d fragments added successfully",
-                            logPrefix(), successCount, processed.size());
+                    //LOGGER.infof("%s Completed: %d/%d fragments added successfully", logPrefix(), successCount, processed.size());
                 })
                 .replaceWithVoid();
     }
@@ -253,7 +252,7 @@ public class PlaylistManager implements IPlaylistManager {
                             .onFailure().invoke(e ->
                                     LOGGER.errorf(e, "%s Materialization FAILED for %s", logPrefix(), fileMetadata.getFileOriginalName()))
                             .onItem().transformToUni(tempFile -> {
-                                LOGGER.infof("%s Segmenting: %s", logPrefix(), songMetadata.getTitle());
+                                //LOGGER.infof("%s Segmenting: %s", logPrefix(), songMetadata.getTitle());
                                 long[] bitrates = {128000L, 64000L};
                                 return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
                                         .ifNoItem().after(Duration.ofMinutes(3)).fail()
@@ -317,11 +316,11 @@ public class PlaylistManager implements IPlaylistManager {
 
         LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
         // Dispatch onto Vert.x event loop — never block or subscribe from caller thread
-        vertx.runOnContext(() -> feedFragments(1, true)
+       /* vertx.runOnContext(() -> feedFragments(1, true)
                 .subscribe().with(
                         v -> LOGGER.debugf("%s Starving feed complete", logPrefix()),
                         e -> LOGGER.errorf(e, "%s Starving feed failed", logPrefix())
-                ));
+                ));*/
 
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             return waitingAudioProvider.createWaitingFragment()

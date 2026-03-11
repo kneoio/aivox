@@ -32,3 +32,6 @@ src/main/resources/application-prod.properties
 /temp/
 /temp_soundfragments_storage/
 /sessions_data/chat-sessions.db
+/merged_tmp/
+/sessions_data/
+/uploads_tmp/

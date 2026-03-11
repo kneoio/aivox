@@ -57,7 +57,7 @@ public class QueueService {
         if (message.getMergingMethod() == MergingType.INTRO_SONG || message.getMergingMethod() == MergingType.LISTENER_INTRO_SONG) {  //keeping JIC
             return getRadioStation(message.getBrandSlug())
                     .chain(radioStation -> {
-                        LOGGER.info("[QueueService] Radio station found: {} , creating IntroSongHandler",message.getBrandSlug());
+                        //LOGGER.info("[QueueService] Radio station found: {} , creating IntroSongHandler",message.getBrandSlug());
                         try {
                             IntroSongHandler handler = new IntroSongHandler(
                                     aivoxConfig,
@@ -97,7 +97,7 @@ public class QueueService {
             LOGGER.info("[QueueService] Processing SONG_INTRO_SONG merging method for messageId: {}", messageId);
             return getRadioStation(brandName)
                     .chain(radioStation -> {
-                        LOGGER.info("[QueueService] Radio station found: {}, handling SONG_INTRO_SONG", brandName);
+                        //LOGGER.info("[QueueService] Radio station found: {}, handling SONG_INTRO_SONG", brandName);
                         return createAudioMixingHandler().handleSongIntroSong(radioStation, message);
                     })
                     .onItem().invoke(result -> {
@@ -110,7 +110,7 @@ public class QueueService {
             LOGGER.info("[QueueService] Processing INTRO_SONG_INTRO_SONG merging method for messageId: {}", messageId);
             return getRadioStation(brandName)
                     .chain(radioStation -> {
-                        LOGGER.info("[QueueService] Radio station found: {}, handling INTRO_SONG_INTRO_SONG", brandName);
+                        //LOGGER.info("[QueueService] Radio station found: {}, handling INTRO_SONG_INTRO_SONG", brandName);
                         return createAudioMixingHandler().handleIntroSongIntroSong(radioStation, message);
                     })
                     .onItem().invoke(result -> {
@@ -123,7 +123,7 @@ public class QueueService {
             LOGGER.info("[QueueService] Processing SONG_CROSSFADE_SONG merging method for messageId: {}", messageId);
             return getRadioStation(brandName)
                     .chain(radioStation -> {
-                        LOGGER.info("[QueueService] Radio station found: {}, creating AudioMixingHandler", brandName);
+                        //LOGGER.info("[QueueService] Radio station found: {}, creating AudioMixingHandler", brandName);
                         AudioMixingHandler handler = createAudioMixingHandler();
                         ConcatenationType concatType = Arrays.stream(ConcatenationType.values())
                                 .skip(new Random().nextInt(ConcatenationType.values().length))
@@ -142,7 +142,7 @@ public class QueueService {
             LOGGER.info("[QueueService] Processing SONG_ONLY merging method for messageId: {}", messageId);
             return getRadioStation(brandName)
                     .chain(radioStation -> {
-                        LOGGER.info("[QueueService] Radio station found: {}, handling SONG_ONLY", brandName);
+                        //LOGGER.info("[QueueService] Radio station found: {}, handling SONG_ONLY", brandName);
                         return createAudioMixingHandler().handleSongOnly(radioStation, message);
                     })
                     .onItem().invoke(result -> {
