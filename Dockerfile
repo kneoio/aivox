@@ -7,5 +7,5 @@ WORKDIR /app
 COPY target/aivox-*-runner.jar app.jar
 RUN chown aivox:aivox app.jar
 USER aivox
-EXPOSE 8080 38708
+EXPOSE 8080 38798
 ENTRYPOINT ["java", "--add-opens=java.base/java.lang=ALL-UNNAMED", "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED", "-jar", "app.jar"]

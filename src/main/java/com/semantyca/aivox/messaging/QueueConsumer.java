@@ -22,7 +22,7 @@ public class QueueConsumer {
     @Inject
     QueueService queueService;
 
-    @Incoming("queue-requests")
+    @Incoming("streaming")
     public Uni<Void> consume(Message<byte[]> message) {
         byte[] payload = message.getPayload();
 
@@ -36,8 +36,8 @@ public class QueueConsumer {
                 })
                 .chain(dto -> {
                     try {
-                        String dtoJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(dto);
-                        LOGGER.info("Received SongQueueMessageDTO: " + dtoJson);
+                        LOGGER.info("Received SongQueueMessageDTO: " +
+                                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(dto));
                     } catch (Exception e) {
                         LOGGER.info("Received SongQueueMessageDTO (toString): " + dto);
                     }

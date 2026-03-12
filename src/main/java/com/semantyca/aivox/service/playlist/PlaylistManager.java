@@ -234,6 +234,21 @@ public class PlaylistManager implements IPlaylistManager {
 
         LOGGER.infof("%s Processing fragment: %s - %s", logPrefix(), soundFragment.getTitle(), soundFragment.getArtist());
 
+        // Check if fragment already has temporary file metadata (e.g., from mixing)
+        LOGGER.infof("%s Checking fileMetadataList: null=%s, empty=%s", logPrefix(), 
+                soundFragment.getFileMetadataList() == null,
+                soundFragment.getFileMetadataList() != null ? soundFragment.getFileMetadataList().isEmpty() : "N/A");
+        
+        if (soundFragment.getFileMetadataList() != null && !soundFragment.getFileMetadataList().isEmpty()) {
+            FileMetadata existingMetadata = soundFragment.getFileMetadataList().get(0);
+            LOGGER.infof("%s Found FileMetadata, temporaryFilePath=%s", logPrefix(), existingMetadata.getTemporaryFilePath());
+            if (existingMetadata.getTemporaryFilePath() != null) {
+                LOGGER.infof("%s Using pre-set temporary file: %s", logPrefix(), existingMetadata.getTemporaryFilePath());
+                Path tempPath = existingMetadata.getTemporaryFilePath();
+                return processTempFile(tempPath, liveSoundFragment, songMetadata, priority);
+            }
+        }
+
         return fileHandler.getFirstFile(soundFragment.getId())
                 .ifNoItem().after(Duration.ofSeconds(30)).fail()
                 .onFailure().recoverWithUni(ex -> {
@@ -289,6 +304,34 @@ public class PlaylistManager implements IPlaylistManager {
                                 LOGGER.errorf(e, "%s Failed to process file: %s", logPrefix(), fileMetadata.getFileOriginalName());
                                 return false;
                             });
+                });
+    }
+
+    private Uni<Boolean> processTempFile(Path tempPath, LiveSoundFragment liveSoundFragment, SongMetadata songMetadata, int priority) {
+        LOGGER.infof("%s Segmenting temporary file: %s", logPrefix(), songMetadata.getTitle());
+        long[] bitrates = {128000L, 64000L};
+        return segmentationService.slice(songMetadata, tempPath, List.of(bitrates[0], bitrates[1]))
+                .ifNoItem().after(Duration.ofMinutes(3)).fail()
+                .onFailure().invoke(e ->
+                        LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))
+                .onItem().transformToUni(segments -> {
+                    if (segments.isEmpty()) {
+                        LOGGER.warnf("%s No segments for fragment: %s", logPrefix(), songMetadata.getSongId());
+                        return Uni.createFrom().item(false);
+                    }
+                    liveSoundFragment.setSegments(segments);
+                    if (priority > 9) {
+                        playlistState.regularQueue.add(liveSoundFragment);
+                        LOGGER.infof("%s ✓ Added to regular queue: %s - %s (%d segments)",
+                                logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
+                                segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                    } else {
+                        playlistState.prioritizedQueue.add(liveSoundFragment);
+                        LOGGER.infof("%s ✓ Added to prioritized queue: %s - %s (%d segments)",
+                                logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
+                                segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
+                    }
+                    return Uni.createFrom().item(true);
                 });
     }
 
