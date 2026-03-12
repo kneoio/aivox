@@ -1,7 +1,6 @@
 package com.semantyca.aivox.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.semantyca.aivox.EnvConst;
 import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
