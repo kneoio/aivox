@@ -2,7 +2,7 @@ package com.semantyca.aivox.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semantyca.aivox.service.QueueService;
-import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
+import com.semantyca.mixpla.dto.queue.livestream.SongQueueMessageDTO;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import org.eclipse.microprofile.reactive.messaging.Message;

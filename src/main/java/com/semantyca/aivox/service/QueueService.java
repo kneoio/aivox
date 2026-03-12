@@ -8,10 +8,9 @@ import com.semantyca.aivox.service.manipulation.mixing.handler.AudioMixingHandle
 import com.semantyca.aivox.service.manipulation.mixing.handler.IntroSongHandler;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.aivox.streaming.RadioStationPool;
-import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
+import com.semantyca.mixpla.dto.queue.livestream.SongQueueMessageDTO;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.model.cnst.MergingType;
-import com.semantyca.mixpla.model.cnst.StreamStatus;
 import com.semantyca.mixpla.model.stream.IStream;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
 import com.semantyca.mixpla.service.exceptions.RadioStationException;
