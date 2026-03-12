@@ -55,6 +55,9 @@ public class MixingHandlerBase {
 
     protected Uni<WavFile> convertToWav(String inputPath) {
         return Uni.createFrom().item(() -> {
+            if (inputPath == null) {
+                throw new IllegalArgumentException("Input path cannot be null");
+            }
             File inputFile = new File(inputPath);
 
             try {

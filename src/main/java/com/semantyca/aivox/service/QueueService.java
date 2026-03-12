@@ -187,21 +187,4 @@ public class QueueService {
                 });
     }
 
-    public Uni<Boolean> isStationOnline(String brand) {
-        LOGGER.debug("[QueueService] Checking if station is online: {}", brand);
-        return radioStationPool.get(brand)
-                .onItem().transform(station -> {
-                    if (station == null) {
-                        return false;
-                    }
-                    StreamStatus status = station.getStatus();
-                    boolean isOnline = status == StreamStatus.ON_LINE ||
-                            status == StreamStatus.WARMING_UP ||
-                            status == StreamStatus.QUEUE_SATURATED ||
-                            status == StreamStatus.IDLE;
-                    LOGGER.debug("[QueueService] Station '{}' status: {}, isOnline: {}", brand, status, isOnline);
-                    return isOnline;
-                });
-    }
-
 }

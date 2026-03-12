@@ -1,6 +1,5 @@
 package com.semantyca.aivox.agent;
 
-import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.LLMConfig;
 import com.semantyca.core.model.cnst.LanguageTag;
 import io.smallrye.mutiny.Uni;

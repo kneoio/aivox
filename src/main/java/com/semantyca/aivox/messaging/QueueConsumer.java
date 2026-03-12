@@ -35,6 +35,12 @@ public class QueueConsumer {
                     }
                 })
                 .chain(dto -> {
+                    try {
+                        String dtoJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(dto);
+                        LOGGER.info("Received SongQueueMessageDTO: " + dtoJson);
+                    } catch (Exception e) {
+                        LOGGER.info("Received SongQueueMessageDTO (toString): " + dto);
+                    }
                     if (!ASSIGNED_BRANDS.contains(dto.getBrandSlug())) {
                         LOGGER.warn("Skipping message for unassigned brand: " + dto.getBrandSlug());
                         return Uni.createFrom().completionStage(message.nack(

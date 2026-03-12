@@ -8,7 +8,9 @@ import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.dto.queue.IntroKey;
 import com.semantyca.mixpla.dto.queue.SongInfoDTO;
+import com.semantyca.mixpla.dto.queue.SongKey;
 import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
@@ -68,9 +70,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
     public Uni<Boolean> handleSongIntroSong(IStream stream, SongQueueMessageDTO toQueueDTO) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
-        String introSongPath = toQueueDTO.getFilePaths().get("audio1");
-        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get("song2");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get(SongKey.SONG_1);
+        String introSongPath = toQueueDTO.getFilePaths().get(IntroKey.INTRO_1).getFilePath();
+        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get(SongKey.SONG_2);
         MixingProfile settings = MixingProfile.randomProfile(12345L);
         LOGGER.info("Applied Mixing sis {}", settings.description);
 
@@ -134,10 +136,10 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
     public Uni<Boolean> handleIntroSongIntroSong(IStream stream, SongQueueMessageDTO message) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        String part1 = message.getFilePaths().get("audio1");           // intro1
-        SongInfoDTO songInfo1 = message.getSongs().get("song1");       // song
-        String part2 = message.getFilePaths().get("audio2");           // intro2
-        SongInfoDTO songInfo2 = message.getSongs().get("song2");      // next song
+        String part1 = message.getFilePaths().get(IntroKey.INTRO_1).getFilePath();           // intro1
+        SongInfoDTO songInfo1 = message.getSongs().get(SongKey.SONG_1);       // song
+        String part2 = message.getFilePaths().get(IntroKey.INTRO_2).getFilePath();           // intro2
+        SongInfoDTO songInfo2 = message.getSongs().get(SongKey.SONG_2);      // next song
         MixingProfile settings = MixingProfile.randomProfile(12345L);
         LOGGER.info("Applied Mixing isis {}", settings.description);
 
@@ -201,7 +203,7 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
     public Uni<Boolean> handleSongOnly(IStream stream, SongQueueMessageDTO toQueueDTO) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get(SongKey.SONG_1);
 
         LOGGER.info("Handling single song feed");
 
@@ -228,8 +230,8 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
     public Uni<Boolean> handleConcatenationAndFeed(IStream stream, SongQueueMessageDTO toQueueDTO, ConcatenationType concatType) {
         PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
-        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get("song1");
-        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get("song2");
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get(SongKey.SONG_1);
+        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get(SongKey.SONG_2);
 
         LOGGER.info("Applied Concatenation Type {}", concatType);
 

@@ -8,7 +8,9 @@ import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.dto.queue.IntroKey;
 import com.semantyca.mixpla.dto.queue.SongInfoDTO;
+import com.semantyca.mixpla.dto.queue.SongKey;
 import com.semantyca.mixpla.dto.queue.SongQueueMessageDTO;
 import com.semantyca.mixpla.model.cnst.AiAgentStatus;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
@@ -57,8 +59,8 @@ public class IntroSongHandler {
             return Uni.createFrom().failure(new IllegalArgumentException("No sound fragments provided"));
         }
         
-        SongInfoDTO songInfo = message.getSongs().get("song1");
-        String ttsFilePath = message.getFilePaths().get("audio1");
+        SongInfoDTO songInfo = message.getSongs().get(SongKey.SONG_1);
+        String ttsFilePath = message.getFilePaths().get(IntroKey.INTRO_1).getFilePath();
 
         return soundFragmentService.getById(songInfo.getSongId())
                 .chain(soundFragment -> {

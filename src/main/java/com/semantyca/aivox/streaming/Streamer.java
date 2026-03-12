@@ -172,8 +172,7 @@ public class Streamer implements IStreamer {
         }
 
         if (streamState.pendingQueue.size() < PENDING_QUEUE_REFILL_THRESHOLD) {
-            LOGGER.infof("%s Pending queue below threshold (%d), fetching",
-                    logPrefix(), streamState.pendingQueue.size());
+            //LOGGER.infof("%s Pending queue below threshold (%d), fetching", logPrefix(), streamState.pendingQueue.size());
             try {
                 LiveSoundFragment fragment = playlistManager.getNextLiveFragment();
                 if (fragment != null) {
@@ -198,8 +197,7 @@ public class Streamer implements IStreamer {
         ConcurrentLinkedQueue<HlsSegment> firstBitrateQueue = segments.values().iterator().next();
         int segmentCount = firstBitrateQueue.size();
 
-        LOGGER.infof("%s Added pending frag with %d segments per bitrate",
-                logPrefix(), segmentCount);
+        //LOGGER.infof("%s Added pending frag with %d segments per bitrate",logPrefix(), segmentCount);
 
         for (int i = 0; i < segmentCount; i++) {
             long globalSeq = currentSequence.getAndIncrement();
