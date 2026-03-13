@@ -1,6 +1,7 @@
 package com.semantyca.aivox.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -13,7 +14,8 @@ import org.jboss.logging.Logger;
 public class MetricPublisher {
 
     private static final Logger LOGGER = Logger.getLogger(MetricPublisher.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule());
 
     @Inject
     @Channel("metrics")

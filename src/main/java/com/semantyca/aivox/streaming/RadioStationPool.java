@@ -2,6 +2,7 @@ package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.model.stats.BroadcastingStats;
 import com.semantyca.aivox.model.stream.RadioStream;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
@@ -41,13 +42,15 @@ public class RadioStationPool {
     private final BrandService brandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
+    private final MetricPublisher metricPublisher;
     private final Vertx vertx;
 
     @Inject
     public RadioStationPool(AivoxConfig aivoxConfig, HlsConfig hlsConfig, WaitingAudioProvider waitingAudioProvider,
                             SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer,
                             SoundFragmentBrandService soundFragmentBrandService, BrandService brandService,
-                            SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService, Vertx vertx) {
+                            SoundFragmentFileHandler fileHandler, AudioSegmentationService segmentationService,
+                            MetricPublisher metricPublisher, Vertx vertx) {
         this.aivoxConfig = aivoxConfig;
         this.hlsConfig = hlsConfig;
         this.waitingAudioProvider = waitingAudioProvider;
@@ -57,6 +60,7 @@ public class RadioStationPool {
         this.brandService = brandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
+        this.metricPublisher = metricPublisher;
         this.vertx = vertx;
     }
 
@@ -95,7 +99,7 @@ public class RadioStationPool {
                     RadioStream radioStream = pool.computeIfAbsent(brandName, key -> {
                         LOGGER.infof("%s Creating new stream for brand", logPrefix(key));
                         PlaylistManager playlistManager = new PlaylistManager(key, brand.getId(), aivoxConfig, vertx, waitingAudioProvider,
-                                soundFragmentBrandService, fileHandler, segmentationService);
+                                soundFragmentBrandService, fileHandler, segmentationService, metricPublisher);
                         Streamer streamer = new Streamer(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
                         streamer.initialize();
                         return new RadioStream(brand, streamer, playlistManager);

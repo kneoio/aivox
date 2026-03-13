@@ -1,6 +1,7 @@
 package com.semantyca.aivox.service.playlist;
 
 import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentFileHandler;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
@@ -8,6 +9,8 @@ import com.semantyca.aivox.streaming.LiveSoundFragment;
 import com.semantyca.aivox.streaming.SongMetadata;
 import com.semantyca.aivox.streaming.WaitingAudioProvider;
 import com.semantyca.core.model.FileMetadata;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
 import com.semantyca.mixpla.model.stream.IPlaylistManager;
@@ -22,7 +25,9 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -41,6 +46,7 @@ public class PlaylistManager implements IPlaylistManager {
     private static final int TRIGGER_SELF_MANAGING = 2;
     private static final int PROCESSED_QUEUE_MAX_SIZE = 2;
     private static final long STARVING_FEED_COOLDOWN_MILLIS = 20_000L;
+    private static final int QUEUE_METRICS_INTERVAL_SECONDS = 10;
 
     private final ReadWriteLock slicedFragmentsLock = new ReentrantReadWriteLock();
     private final PlaylistState playlistState = new PlaylistState();
@@ -55,8 +61,10 @@ public class PlaylistManager implements IPlaylistManager {
     private final SoundFragmentBrandService soundFragmentBrandService;
     private final SoundFragmentFileHandler fileHandler;
     private final AudioSegmentationService segmentationService;
+    private final MetricPublisher metricPublisher;
     private final Path tempDir;
     private final UUID brandId;
+    private final String serviceId;
 
     public PlaylistManager(String brand,
                            UUID brandId,
@@ -65,7 +73,8 @@ public class PlaylistManager implements IPlaylistManager {
                            WaitingAudioProvider waitingAudioProvider,
                            SoundFragmentBrandService soundFragmentBrandService,
                            SoundFragmentFileHandler fileHandler,
-                           AudioSegmentationService segmentationService) {
+                           AudioSegmentationService segmentationService,
+                           MetricPublisher metricPublisher) {
         this.brand = brand;
         this.brandId = brandId;
         this.vertx = vertx;
@@ -73,6 +82,8 @@ public class PlaylistManager implements IPlaylistManager {
         this.soundFragmentBrandService = soundFragmentBrandService;
         this.fileHandler = fileHandler;
         this.segmentationService = segmentationService;
+        this.metricPublisher = metricPublisher;
+        this.serviceId = "aivox";
         this.tempDir = Paths.get(aivoxConfig.path().temp());
         try {
             Files.createDirectories(tempDir);
@@ -150,6 +161,14 @@ public class PlaylistManager implements IPlaylistManager {
                 LOGGER.errorf(e, "%s Error during maintenance", logPrefix());
             }
         }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
+
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                publishQueueMetrics();
+            } catch (Exception e) {
+                LOGGER.errorf(e, "%s Error publishing queue metrics", logPrefix());
+            }
+        }, QUEUE_METRICS_INTERVAL_SECONDS, QUEUE_METRICS_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
 
@@ -359,11 +378,11 @@ public class PlaylistManager implements IPlaylistManager {
 
         LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
         // Dispatch onto Vert.x event loop — never block or subscribe from caller thread
-       /* vertx.runOnContext(() -> feedFragments(1, true)
+        vertx.runOnContext(() -> feedFragments(1, true)
                 .subscribe().with(
                         v -> LOGGER.debugf("%s Starving feed complete", logPrefix()),
                         e -> LOGGER.errorf(e, "%s Starving feed failed", logPrefix())
-                ));*/
+                ));
 
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             return waitingAudioProvider.createWaitingFragment()
@@ -419,6 +438,37 @@ public class PlaylistManager implements IPlaylistManager {
         playlistState.regularQueue.clear();
         playlistState.prioritizedQueue.clear();
         LOGGER.infof("%s Shutdown complete.", logPrefix());
+    }
+
+    private void publishQueueMetrics() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("regularQueueSize", playlistState.regularQueue.size());
+        payload.put("prioritizedQueueSize", playlistState.prioritizedQueue.size());
+        
+        slicedFragmentsLock.readLock().lock();
+        try {
+            payload.put("obtainedByHlsPlaylistSize", playlistState.obtainedByHlsPlaylist.size());
+            payload.put("fragmentsForMp3Size", playlistState.fragmentsForMp3.size());
+        } finally {
+            slicedFragmentsLock.readLock().unlock();
+        }
+        
+        payload.put("brandId", brandId.toString());
+        payload.put("initialized", initialized);
+        
+        MetricEventDTO event = MetricEventDTO.of(
+                serviceId,
+                brand,
+                MetricEventType.QUEUE_MESSAGE_SENT,
+                UUID.randomUUID(),
+                payload
+        );
+        
+        metricPublisher.publish(event)
+                .subscribe().with(
+                        v -> LOGGER.debugf("%s Queue metrics published", logPrefix()),
+                        e -> LOGGER.errorf(e, "%s Failed to publish queue metrics", logPrefix())
+                );
     }
 
     private String logPrefix() {
