@@ -2,7 +2,7 @@ package com.semantyca.aivox.dto.radiostation;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.semantyca.aivox.dto.stream.StreamScheduleDTO;
-import io.kneo.core.localization.LanguageCode;
+import com.semantyca.core.model.cnst.LanguageCode;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;

@@ -15,8 +15,6 @@ import jakarta.inject.Inject;
 public class RadioService {
     @Inject
     RadioStationPool radioStationPool;
-    @Inject
-    AnimationService animationService;
 
 
     public Uni<StatusMixplaDTO> getStatus(String brand) {
@@ -70,7 +68,7 @@ public class RadioService {
                                 stationCountryCode,
                                 color,
                                 "Drexs",
-                                animationService.generateRandomAnimation()
+                                null
                         )
                 );
     }

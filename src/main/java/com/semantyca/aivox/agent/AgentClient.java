@@ -5,7 +5,7 @@ import com.semantyca.aivox.dto.AgentRespDTO;
 import com.semantyca.core.model.cnst.LanguageTag;
 import com.semantyca.core.model.cnst.TranslationType;
 import com.semantyca.mixpla.model.cnst.LlmType;
-import com.semantyca.officeframe.cnst.CountryCode;
+import com.semantyca.officeframe.model.cnst.CountryCode;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.Vertx;

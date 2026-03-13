@@ -1,12 +1,12 @@
 package com.semantyca.aivox.repository.soundfragment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.semantyca.core.model.user.IUser;
+import com.semantyca.core.repository.rls.RLSRepository;
 import com.semantyca.mixpla.model.cnst.PlaylistItemType;
 import com.semantyca.mixpla.model.cnst.SourceType;
 import com.semantyca.mixpla.model.soundfragment.BrandSoundFragment;
 import com.semantyca.mixpla.model.soundfragment.SoundFragment;
-import io.kneo.core.model.user.IUser;
-import io.kneo.core.repository.rls.RLSRepository;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.pgclient.PgPool;
