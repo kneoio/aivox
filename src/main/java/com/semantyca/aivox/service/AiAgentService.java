@@ -28,13 +28,10 @@ public class AiAgentService extends AbstractService<AiAgent, AiAgentDTO> {
     private final AiAgentRepository repository;
 
     @Inject
-    public AiAgentService(
-            UserService userService,
-            AiAgentRepository repository
-    ) {
-        super(userService);
+    public AiAgentService(AiAgentRepository repository) {
         this.repository = repository;
     }
+
 
     public Uni<List<AiAgentDTO>> getAll(final int limit, final int offset, final IUser user) {
         return repository.getAll(limit, offset, false, user)

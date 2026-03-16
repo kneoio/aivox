@@ -9,8 +9,8 @@ import com.semantyca.aivox.repository.brand.BrandRepository;
 import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.core.model.cnst.LanguageCode;
 import com.semantyca.core.model.user.IUser;
-import com.semantyca.core.model.user.SuperUser;
 import com.semantyca.core.service.AbstractService;
+import com.semantyca.core.service.UserService;
 import com.semantyca.mixpla.model.brand.Brand;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
 import io.smallrye.mutiny.Uni;
@@ -28,18 +28,25 @@ public class BrandService extends AbstractService<Brand, BrandDTO> {
     private final BrandRepository repository;
     private final RadioStationPool radiostationPool;
 
+    protected BrandService() {
+        super();
+        this.repository = null;
+        this.radiostationPool = null;
+    }
+
     @Inject
-    public BrandService(BrandRepository repository, RadioStationPool radiostationPool) {
+    public BrandService(UserService userService, BrandRepository repository, RadioStationPool radiostationPool) {
+        super(userService);
         this.repository = repository;
         this.radiostationPool = radiostationPool;
     }
 
-       public Uni<List<Brand>> getAll(final int limit, final int offset) {
-        return repository.getAll(limit, offset, false, SuperUser.build(), null, null);
+    public Uni<List<Brand>> getAll(final int limit, final int offset) {
+        return repository.getAll(limit, offset);
     }
 
     public Uni<List<Brand>> getAll(final int limit, final int offset, IUser user) {
-        return repository.getAll(limit, offset, false, user, null, null);
+        return repository.getAll(limit, offset);
     }
 
     @Override
@@ -54,17 +61,19 @@ public class BrandService extends AbstractService<Brand, BrandDTO> {
     }
 
     public Uni<Brand> getById(UUID id, IUser user) {
+        assert repository != null;
         return repository.findById(id, user, true);
     }
 
 
     public Uni<Brand> getBySlugName(String name) {
+        assert repository != null;
         return repository.getBySlugName(name);
     }
 
     public Uni<List<BrandDTO>> getAllDTO(final int limit, final int offset, final IUser user, final String country, final String query) {
         assert repository != null;
-        return repository.getAll(limit, offset, false, user, country, query)
+        return repository.getAll(limit, offset)
                 .chain(list -> {
                     if (list.isEmpty()) {
                         return Uni.createFrom().item(List.of());

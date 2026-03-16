@@ -1,104 +1,83 @@
 package com.semantyca.aivox.rest;
 
-import com.semantyca.aivox.service.StreamingService;
-import io.vertx.core.buffer.Buffer;
+import com.semantyca.aivox.service.BrandService;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.Json;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
 import org.jboss.logging.Logger;
 
 @ApplicationScoped
 public class InfoResource {
     
     private static final Logger LOGGER = Logger.getLogger(InfoResource.class);
-    
-    @Inject 
-    private StreamingService streamingService;
+    private static final String[] SUPPORTED_MIXPLA_VERSIONS = {"2.5.5","2.5.6","2.5.7","2.5.8","2.5.9"};
+
+    @Inject
+    private BrandService brandService;
     
     public void setupRoutes(Router router) {
-        String path = "/radio";
-        
-        router.route(HttpMethod.GET, path + "/:brand/master.m3u8").handler(this::getMasterPlaylist);
-        router.route(HttpMethod.GET, path + "/:brand/stream.m3u8").handler(this::getPlaylist);
-        router.route(HttpMethod.GET, path + "/:brand/segments/:segmentFile").handler(this::getSegment);
+        String path = "/info";
+        router.route(HttpMethod.GET, path + "/all-brands").handler(this::validateMixplaAccess).handler(this::getAllBrands);
     }
+
     
-    private void getMasterPlaylist(RoutingContext rc) {
-        String brand = rc.pathParam("brand").toLowerCase();
+    private void getAllBrands(RoutingContext rc) {
+        String country = rc.request().getParam("country");
+        String query = rc.request().getParam("query");
+        String limitParam = rc.request().getParam("limit");
+        String offsetParam = rc.request().getParam("offset");
         
-        streamingService.getMasterPlaylist(brand)
+        int limit = limitParam != null ? Integer.parseInt(limitParam) : 100;
+        int offset = offsetParam != null ? Integer.parseInt(offsetParam) : 0;
+        
+        brandService.getAllDTO(limit, offset, null, country, query)
             .subscribe()
             .with(
-                playlist -> {
+                brands -> {
                     rc.response()
-                        .putHeader("Content-Type", "application/vnd.apple.mpegurl")
-                        .putHeader("Cache-Control", "no-cache")
+                        .putHeader("Content-Type", MediaType.APPLICATION_JSON)
                         .putHeader("Access-Control-Allow-Origin", "*")
-                        .end(playlist);
+                        .end(Json.encode(brands));
                 },
                 failure -> {
-                    LOGGER.error("Failed to generate master playlist for brand: " + brand, failure);
-                    rc.response().setStatusCode(404).end("Stream not found");
+                    LOGGER.error("Failed to get all brands", failure);
+                    rc.response().setStatusCode(500).end("Failed to get all brands");
                 }
             );
     }
-    
-    private void getPlaylist(RoutingContext rc) {
-        String brand = rc.pathParam("brand").toLowerCase();
-        Long bitrate = rc.request().getParam("bitrate") != null ? 
-            Long.parseLong(rc.request().getParam("bitrate")) : null;
+
+    private void validateMixplaAccess(RoutingContext rc) {
+        String host = rc.request().remoteAddress().host();
+        String clientId = rc.request().getHeader("X-Client-ID");
+        String mixplaApp = rc.request().getHeader("X-Mixpla-App");
         
-        streamingService.getStreamPlaylist(brand, bitrate)
-            .subscribe()
-            .with(
-                playlist -> {
-                    rc.response()
-                        .putHeader("Content-Type", "application/vnd.apple.mpegurl")
-                        .putHeader("Cache-Control", "no-cache")
-                        .putHeader("Access-Control-Allow-Origin", "*")
-                        .end(playlist);
-                },
-                failure -> {
-                    LOGGER.error("Failed to generate playlist for brand: " + brand + ", bitrate: " + bitrate, failure);
-                    rc.response().setStatusCode(404).end("Stream not found");
-                }
-            );
+        LOGGER.info("Access validation - Host: " + host + ", Client-ID: " + clientId + ", Mixpla-App: " + mixplaApp);
+
+        if (mixplaApp != null && isValidMixplaApp(mixplaApp)) { 
+            LOGGER.info("Allowing valid Mixpla app access");
+            rc.next(); 
+            return; 
+        }
+        if ("mixpla-web".equals(clientId)) { 
+            LOGGER.info("Allowing Mixpla web access");
+            rc.next(); 
+            return; 
+        }
+
+        LOGGER.warn("Access denied for host: " + host);
+        rc.response().setStatusCode(403).end("Access denied");
     }
-    
-    private void getSegment(RoutingContext rc) {
-        String segmentFile = rc.pathParam("segmentFile");
-        String brand = rc.pathParam("brand").toLowerCase();
-        
-        //LOGGER.info("Segment request: brand=" + brand + ", file=" + segmentFile);
-        
-        streamingService.getSegment(brand, segmentFile)
-            .subscribe()
-            .with(
-                segmentData -> {
-                    if (segmentData == null) {
-                        LOGGER.warn("Segment data is NULL for: " + segmentFile);
-                        rc.response().setStatusCode(404).end("Segment not found");
-                        return;
-                    }
-                    //LOGGER.info("Serving segment: " + segmentFile + ", size: " + segmentData.length + " bytes");
-                    rc.response()
-                        .putHeader("Content-Type", "video/MP2T")
-                        .putHeader("Cache-Control", "no-cache")
-                        .putHeader("Access-Control-Allow-Origin", "*")
-                        .end(Buffer.buffer(segmentData));
-                },
-                failure -> {
-                    LOGGER.error("Failed to get segment: " + segmentFile + " for brand: " + brand, failure);
-                    if (failure instanceof WebApplicationException) {
-                        WebApplicationException wae = (WebApplicationException) failure;
-                        rc.response().setStatusCode(wae.getResponse().getStatus()).end("Segment not found");
-                    } else {
-                        rc.response().setStatusCode(500).end("Error serving segment");
-                    }
-                }
-            );
+
+    private boolean isValidMixplaApp(String mixplaApp) {
+        final String prefix = "mixpla-mobile";
+        if (!mixplaApp.startsWith(prefix)) return false;
+
+        String version = mixplaApp.substring(prefix.length()).replaceFirst("^[^0-9]*", "");
+        for (String v : SUPPORTED_MIXPLA_VERSIONS) if (v.equals(version)) return true;
+        return false;
     }
 }

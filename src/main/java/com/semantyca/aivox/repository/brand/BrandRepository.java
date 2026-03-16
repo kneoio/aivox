@@ -46,77 +46,28 @@ public class BrandRepository extends AsyncRepository {
         super(client, mapper, rlsRepository);
     }
 
-    public Uni<List<Brand>> getAll(int limit, int offset, boolean includeArchived, final IUser user, String country, String query) {
-        StringBuilder sql = new StringBuilder();
-        sql.append("SELECT * FROM ").append(entityData.getTableName()).append(" t, ")
-                .append(entityData.getRlsName()).append(" rls ")
-                .append("WHERE t.id = rls.entity_id AND rls.reader = $1");
-
-        int paramIndex = 2;
-        if (!includeArchived) {
-            sql.append(" AND t.archived = 0");
-        }
-        if (country != null && !country.isBlank()) {
-            sql.append(" AND t.country = $").append(paramIndex++);
-        }
-        if (query != null && !query.isBlank()) {
-            sql.append(" AND (t.search_name LIKE $").append(paramIndex)
-                    .append(" OR LOWER(t.description) LIKE $").append(paramIndex + 1).append(")");
-            paramIndex += 2;
-        }
-        sql.append(" ORDER BY t.last_mod_date DESC");
+    public Uni<List<Brand>> getAll(int limit, int offset) {
+        String sql = "SELECT * FROM " + entityData.getTableName() + " t " +
+                "WHERE t.archived = 0 AND t.public = 1 " +
+                "ORDER BY t.last_mod_date DESC ";
+        
         if (limit > 0) {
-            sql.append(" LIMIT ").append(limit).append(" OFFSET ").append(offset);
+            sql += "LIMIT " + limit + " OFFSET " + offset;
         }
 
-        Tuple params = Tuple.tuple().addLong(user.getId());
-        if (country != null && !country.isBlank()) {
-            params.addString(country.toUpperCase());
-        }
-        if (query != null && !query.isBlank()) {
-            String q = "%" + query.toLowerCase() + "%";
-            params.addString(q);
-            params.addString(q);
-        }
-
-        return client.preparedQuery(sql.toString())
-                .execute(params)
+        return client.preparedQuery(sql)
+                .execute()
                 .onItem().transformToMulti(rows -> Multi.createFrom().iterable(rows))
                 .onItem().transform(this::from)
                 .collect().asList();
     }
 
-    public Uni<Integer> getAllCount(IUser user, boolean includeArchived, String country, String query) {
-        StringBuilder sql = new StringBuilder();
-        sql.append("SELECT COUNT(*) FROM ").append(entityData.getTableName()).append(" t, ")
-                .append(entityData.getRlsName()).append(" rls ")
-                .append("WHERE t.id = rls.entity_id AND rls.reader = $1");
+    public Uni<Integer> getAllCount() {
+        String sql = "SELECT COUNT(*) FROM " + entityData.getTableName() + " t " +
+                "WHERE t.archived = 0 AND t.public = 1";
 
-        int paramIndex = 2;
-        if (!includeArchived) {
-            sql.append(" AND t.archived = 0");
-        }
-        if (country != null && !country.isBlank()) {
-            sql.append(" AND t.country = $").append(paramIndex++);
-        }
-        if (query != null && !query.isBlank()) {
-            sql.append(" AND (t.search_name LIKE $").append(paramIndex)
-                    .append(" OR LOWER(t.description) LIKE $").append(paramIndex + 1).append(")");
-            paramIndex += 2;
-        }
-
-        Tuple params = Tuple.tuple().addLong(user.getId());
-        if (country != null && !country.isBlank()) {
-            params.addString(country.toUpperCase());
-        }
-        if (query != null && !query.isBlank()) {
-            String q = "%" + query.toLowerCase() + "%";
-            params.addString(q);
-            params.addString(q);
-        }
-
-        return client.preparedQuery(sql.toString())
-                .execute(params)
+        return client.preparedQuery(sql)
+                .execute()
                 .onItem().transform(rows -> rows.iterator().next().getInteger(0));
     }
 
@@ -200,6 +151,7 @@ public class BrandRepository extends AsyncRepository {
         doc.setSlugName(row.getString("slug_name"));
         doc.setArchived(row.getInteger("archived"));
         doc.setIsTemporary(row.getInteger("is_temporary"));
+        doc.setPublicBrand(row.getInteger("public"));
         String country = row.getString("country");
         doc.setCountry(country != null ? CountryCode.valueOf(country) : null);
         doc.setManagedBy(ManagedBy.valueOf(row.getString("managing_mode")));

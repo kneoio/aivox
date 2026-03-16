@@ -219,7 +219,7 @@ public class PlaylistManager implements IPlaylistManager {
                     List<SoundFragment> available = songs.stream()
                             .filter(f -> !excludedIds.contains(f.getId()))
                             .collect(Collectors.toList());
-                    LOGGER.infof("%s After filtering: %d available songs", logPrefix(), available.size());
+                    //LOGGER.infof("%s After filtering: %d available songs", logPrefix(), available.size());
                     Collections.shuffle(available);
                     return available;
                 })
@@ -254,9 +254,9 @@ public class PlaylistManager implements IPlaylistManager {
         LOGGER.infof("%s Processing fragment: %s - %s", logPrefix(), soundFragment.getTitle(), soundFragment.getArtist());
 
         // Check if fragment already has temporary file metadata (e.g., from mixing)
-        LOGGER.infof("%s Checking fileMetadataList: null=%s, empty=%s", logPrefix(), 
+        /*LOGGER.infof("%s Checking fileMetadataList: null=%s, empty=%s", logPrefix(),
                 soundFragment.getFileMetadataList() == null,
-                soundFragment.getFileMetadataList() != null ? soundFragment.getFileMetadataList().isEmpty() : "N/A");
+                soundFragment.getFileMetadataList() != null ? soundFragment.getFileMetadataList().isEmpty() : "N/A");*/
         
         if (soundFragment.getFileMetadataList() != null && !soundFragment.getFileMetadataList().isEmpty()) {
             FileMetadata existingMetadata = soundFragment.getFileMetadataList().get(0);
