@@ -2,22 +2,29 @@ package com.semantyca.aivox.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.service.QueueService;
 import com.semantyca.aivox.service.StreamingService;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.core.MediaType;
 import org.jboss.logging.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @ApplicationScoped
 public class DebugResource {
     
     private static final Logger LOGGER = Logger.getLogger(DebugResource.class);
+    private static final String[] SUPPORTED_MIXPLA_VERSIONS = {"2.5.5","2.5.6","2.5.7","2.5.8","2.5.9"};
     private static final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
     
     @Inject
@@ -26,12 +33,18 @@ public class DebugResource {
     @Inject
     QueueService queueService;
     
+    @Inject
+    AivoxConfig config;
+    
+    @Inject
+    MetricPublisher metricPublisher;
+    
     public void setupRoutes(Router router) {
-        String path = "/api/debug";
-        router.route(HttpMethod.POST, path + "/stream/:brand").handler(this::createStream);
-        router.route(HttpMethod.DELETE, path + "/stream/:brand").handler(this::stopStream);
-        router.route(HttpMethod.GET, path + "/streams").handler(this::listStreams);
-        router.route(HttpMethod.POST, path + "/queue/:brand").handler(this::testAddToQueue);
+        String path = "/aivox/debug";
+        router.route(HttpMethod.POST, path + "/stream/:brand").handler(this::validateDebugAccess).handler(this::createStream);
+        router.route(HttpMethod.DELETE, path + "/stream/:brand").handler(this::validateDebugAccess).handler(this::stopStream);
+        router.route(HttpMethod.GET, path + "/streams").handler(this::validateDebugAccess).handler(this::listStreams);
+        router.route(HttpMethod.POST, path + "/queue/:brand").handler(this::validateDebugAccess).handler(this::testAddToQueue);
     }
     
     private void createStream(RoutingContext rc) {
@@ -41,6 +54,15 @@ public class DebugResource {
             .subscribe()
             .with(
                 bundle -> {
+                    // Publish station started metric
+                    publishStationMetric(brand, "STATION_STARTED", Map.of(
+                        "brand", brand,
+                        "status", "initialized",
+                        "active", bundle.isActive(),
+                        "createdAt", bundle.getCreatedAt().toString(),
+                        "source", "debug_api"
+                    ));
+                    
                     Map<String, Object> response = new HashMap<>();
                     response.put("brand", brand);
                     response.put("status", "initialized");
@@ -63,6 +85,13 @@ public class DebugResource {
                     LOGGER.info("Stream initialized for brand: " + brand);
                 },
                 failure -> {
+                    // Publish station start failed metric
+                    publishStationMetric(brand, "STATION_START_FAILED", Map.of(
+                        "brand", brand,
+                        "error", failure.getMessage(),
+                        "source", "debug_api"
+                    ));
+                    
                     LOGGER.error("Failed to create stream for brand: " + brand, failure);
                     rc.response()
                         .setStatusCode(500)
@@ -79,6 +108,13 @@ public class DebugResource {
             .subscribe()
             .with(
                 bundle -> {
+                    // Publish station stopped metric
+                    publishStationMetric(brand, "STATION_STOPPED", Map.of(
+                        "brand", brand,
+                        "status", "stopped",
+                        "source", "debug_api"
+                    ));
+                    
                     Map<String, Object> response = new HashMap<>();
                     response.put("brand", brand);
                     response.put("status", "stopped");
@@ -99,6 +135,13 @@ public class DebugResource {
                     LOGGER.info("Stream stopped for brand: " + brand);
                 },
                 failure -> {
+                    // Publish station stop failed metric
+                    publishStationMetric(brand, "STATION_STOP_FAILED", Map.of(
+                        "brand", brand,
+                        "error", failure.getMessage(),
+                        "source", "debug_api"
+                    ));
+                    
                     LOGGER.error("Failed to stop stream for brand: " + brand, failure);
                     rc.response()
                         .setStatusCode(500)
@@ -147,7 +190,81 @@ public class DebugResource {
     }
 
     private void testAddToQueue(RoutingContext rc) {
+        rc.response()
+            .putHeader("Content-Type", MediaType.APPLICATION_JSON)
+            .end("{\"message\": \"Queue test endpoint\"}");
+    }
 
+    private void validateDebugAccess(RoutingContext rc) {
+        String host = rc.request().remoteAddress().host();
+        String clientId = rc.request().getHeader("X-Client-ID");
+        String mixplaApp = rc.request().getHeader("X-Mixpla-App");
+        String debugToken = rc.request().getHeader("X-Debug-Token");
+        
+        LOGGER.info("Debug access validation - Host: " + host + ", Client-ID: " + clientId + ", Mixpla-App: " + mixplaApp + ", Debug-Token: " + (debugToken != null ? "provided" : "missing"));
+        
+        // Check debug token first
+        if (debugToken != null && debugToken.equals(config.debugToken())) {
+            LOGGER.info("Allowing access via valid debug token");
+            rc.next();
+            return;
+        }
+        
+        // Allow localhost access
+        if ("127.0.0.1".equals(host) || "::1".equals(host)) {
+            LOGGER.info("Allowing localhost access");
+            rc.next();
+            return;
+        }
+        
+        // Check Mixpla app validation
+        if (mixplaApp != null && isValidMixplaApp(mixplaApp)) {
+            LOGGER.info("Allowing valid Mixpla app access");
+            rc.next();
+            return;
+        }
+        
+        // Check Mixpla web client
+        if ("mixpla-web".equals(clientId)) {
+            LOGGER.info("Allowing Mixpla web access");
+            rc.next();
+            return;
+        }
 
+        LOGGER.warn("Debug access denied for host: " + host);
+        rc.response()
+            .setStatusCode(403)
+            .putHeader("Content-Type", MediaType.APPLICATION_JSON)
+            .end("{\"error\": \"Access denied - valid debug token or Mixpla headers required\"}");
+    }
+
+    private boolean isValidMixplaApp(String mixplaApp) {
+        final String prefix = "mixpla-mobile";
+        if (!mixplaApp.startsWith(prefix)) return false;
+
+        String version = mixplaApp.substring(prefix.length()).replaceFirst("^[^0-9]*", "");
+        for (String v : SUPPORTED_MIXPLA_VERSIONS) if (v.equals(version)) return true;
+        return false;
+    }
+
+    private void publishStationMetric(String brand, String eventType, Map<String, Object> payload) {
+        try {
+            MetricEventDTO event = MetricEventDTO.of(
+                "debug-api",
+                brand,
+                MetricEventType.valueOf(eventType),
+                UUID.randomUUID(),
+                payload
+            );
+            
+            metricPublisher.publish(event)
+                .subscribe()
+                .with(
+                    success -> LOGGER.infof("Published %s metric for brand %s", eventType, brand),
+                    failure -> LOGGER.errorf("Failed to publish %s metric for brand %s", eventType, brand, failure)
+                );
+        } catch (Exception e) {
+            LOGGER.errorf("Failed to create metric event %s for brand %s", eventType, brand, e);
+        }
     }
 }

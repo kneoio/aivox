@@ -31,6 +31,10 @@ public interface AivoxConfig {
     @WithName("station.whitelist")
     Optional<List<String>> stationWhitelist();
 
+    @WithName("debug.token")
+    @WithDefault("debug-token-2026-secret")
+    String debugToken();
+
     @WithName("merged")
     @WithDefault("merged_tmp")
     String getPathForMerged();

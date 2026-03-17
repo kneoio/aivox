@@ -20,7 +20,7 @@ public class InfoResource {
     private BrandService brandService;
     
     public void setupRoutes(Router router) {
-        String path = "/info";
+        String path = "/aivox/info";
         router.route(HttpMethod.GET, path + "/all-brands").handler(this::validateMixplaAccess).handler(this::getAllBrands);
     }
 
