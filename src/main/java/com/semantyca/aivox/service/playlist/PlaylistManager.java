@@ -442,19 +442,12 @@ public class PlaylistManager implements IPlaylistManager {
 
     private void publishQueueMetrics() {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("regularQueueSize", playlistState.regularQueue.size());
-        payload.put("prioritizedQueueSize", playlistState.prioritizedQueue.size());
-        
-        slicedFragmentsLock.readLock().lock();
-        try {
-            payload.put("obtainedByHlsPlaylistSize", playlistState.obtainedByHlsPlaylist.size());
-            payload.put("fragmentsForMp3Size", playlistState.fragmentsForMp3.size());
-        } finally {
-            slicedFragmentsLock.readLock().unlock();
-        }
-        
         payload.put("brandId", brandId.toString());
         payload.put("initialized", initialized);
+        
+        // Add song metadata for each queue, avoiding duplicates
+        payload.put("regularQueueSongs", getUniqueSongMetadata(playlistState.regularQueue));
+        payload.put("prioritizedQueueSongs", getUniqueSongMetadata(playlistState.prioritizedQueue));
         
         MetricEventDTO event = MetricEventDTO.of(
                 serviceId,
@@ -469,6 +462,39 @@ public class PlaylistManager implements IPlaylistManager {
                         v -> LOGGER.debugf("%s Queue metrics published", logPrefix()),
                         e -> LOGGER.errorf(e, "%s Failed to publish queue metrics", logPrefix())
                 );
+    }
+
+    private List<Map<String, Object>> getUniqueSongMetadata(java.util.Collection<LiveSoundFragment> fragments) {
+        if (fragments == null || fragments.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // Use a set to track unique song combinations (title + artist)
+        java.util.Set<String> uniqueSongs = new java.util.HashSet<>();
+        List<Map<String, Object>> result = new ArrayList<>();
+        
+        for (LiveSoundFragment fragment : fragments) {
+            if (fragment != null && fragment.getMetadata() != null) {
+                SongMetadata metadata = fragment.getMetadata();
+                String songKey = metadata.getTitle() + "|" + metadata.getArtist();
+                
+                // Only add if we haven't seen this song before
+                if (uniqueSongs.add(songKey)) {
+                    Map<String, Object> songInfo = new HashMap<>();
+                    songInfo.put("songId", metadata.getSongId() != null ? metadata.getSongId().toString() : null);
+                    songInfo.put("title", metadata.getTitle());
+                    songInfo.put("artist", metadata.getArtist());
+                    songInfo.put("album", metadata.getAlbum());
+                    songInfo.put("genre", metadata.getGenre());
+                    songInfo.put("duration", metadata.getDuration());
+                    songInfo.put("languageCode", metadata.getLanguageCode());
+                    songInfo.put("itemType", metadata.getItemType() != null ? metadata.getItemType().name() : null);
+                    result.add(songInfo);
+                }
+            }
+        }
+        
+        return result;
     }
 
     private String logPrefix() {

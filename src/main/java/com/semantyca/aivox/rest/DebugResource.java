@@ -30,8 +30,6 @@ public class DebugResource {
     @Inject
     StreamingService streamingService;
 
-    @Inject
-    QueueService queueService;
     
     @Inject
     AivoxConfig config;

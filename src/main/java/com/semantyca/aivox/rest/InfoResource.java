@@ -26,15 +26,13 @@ public class InfoResource {
 
     
     private void getAllBrands(RoutingContext rc) {
-        String country = rc.request().getParam("country");
-        String query = rc.request().getParam("query");
         String limitParam = rc.request().getParam("limit");
         String offsetParam = rc.request().getParam("offset");
         
         int limit = limitParam != null ? Integer.parseInt(limitParam) : 100;
         int offset = offsetParam != null ? Integer.parseInt(offsetParam) : 0;
         
-        brandService.getAllDTO(limit, offset, null, country, query)
+        brandService.getAllDTO(limit, offset)
             .subscribe()
             .with(
                 brands -> {

@@ -100,7 +100,7 @@
         streamSt.textContent = action + '...';
         log(`${action} server stream [${brand}]`, 'info');
         try {
-            const r = await fetch('/api/debug/stream/' + brand, { method });
+            const r = await fetch('/aivox/debug/stream/' + brand, { method });
             const text = await r.text();
             streamSt.textContent = r.ok ? 'OK' : 'Error';
             log(`Server response ${r.status}: ${text}`, r.ok ? 'ok' : 'error');

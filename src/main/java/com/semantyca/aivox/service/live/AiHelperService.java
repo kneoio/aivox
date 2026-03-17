@@ -37,32 +37,20 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class AiHelperService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AiHelperService.class);
-
-    public record DjRequestInfo(LocalDateTime requestTime, String djName) {
-    }
-
-    private final Map<String, DjRequestInfo> aiDjStatsRequestTracker = new ConcurrentHashMap<>();
     private final Map<String, List<AiDjStatsDTO.StatusMessage>> aiDjMessagesTracker = new ConcurrentHashMap<>();
-
     private final SoundFragmentService soundFragmentService;
     private final GenreService genreService;
     private final LabelService labelService;
-    private final BrandService brandService;
-    private final AiAgentService aiAgentService;
-
-    private static final int SCENE_START_SHIFT_MINUTES = 10;
 
     @Inject
     public AiHelperService(
             SoundFragmentService soundFragmentService,
             GenreService genreService,
-            LabelService labelService, BrandService brandService, AiAgentService aiAgentService
+            LabelService labelService
     ) {
         this.soundFragmentService = soundFragmentService;
         this.genreService = genreService;
         this.labelService = labelService;
-        this.brandService = brandService;
-        this.aiAgentService = aiAgentService;
     }
 
 
@@ -87,56 +75,6 @@ public class AiHelperService {
                             .collect(Collectors.toList());
 
                     return Uni.join().all(aiDtoUnis).andFailFast();
-                });
-    }
-
-    public Uni<AvailableStationsAiDTO> getAllStations(List<StreamStatus> statuses, String country, LanguageTag djLanguage, String query) {
-        return brandService.getAllDTO(1000, 0, SuperUser.build(), country, query)
-                .flatMap(stations -> {
-                    if (stations == null || stations.isEmpty()) {
-                        AvailableStationsAiDTO container = new AvailableStationsAiDTO();
-                        container.setRadioStations(List.of());
-                        return Uni.createFrom().item(container);
-                    }
-
-                    List<Uni<RadioStationAiDTO>> unis = stations.stream()
-                            .map(dto -> {
-                                if (statuses != null && !statuses.contains(dto.getStatus())) {
-                                    return Uni.createFrom().<RadioStationAiDTO>nullItem();
-                                }
-
-                                if (djLanguage != null) {
-                                    if (dto.getAiAgentId() == null) {
-                                        return Uni.createFrom().<RadioStationAiDTO>nullItem();
-                                    }
-                                    return aiAgentService.getById(dto.getAiAgentId(), SuperUser.build(), LanguageCode.en)
-                                            .map(agent -> {
-                                                boolean supports = agent.getPreferredLang().stream()
-                                                        .anyMatch(p -> p.getLanguageTag() == djLanguage);
-                                                if (!supports) {
-                                                    return null;
-                                                }
-                                                return toRadioStationAiDTO(dto, agent);
-                                            })
-                                            .onFailure().recoverWithItem(() -> null);
-                                } else {
-                                    if (dto.getAiAgentId() == null) {
-                                        return Uni.createFrom().item(toRadioStationAiDTO(dto, null));
-                                    }
-                                    return aiAgentService.getById(dto.getAiAgentId(), SuperUser.build(), LanguageCode.en)
-                                            .map(agent -> toRadioStationAiDTO(dto, agent))
-                                            .onFailure().recoverWithItem(() -> toRadioStationAiDTO(dto, null));
-                                }
-                            })
-                            .collect(Collectors.toList());
-
-                    return (unis.isEmpty() ? Uni.createFrom().item(List.<RadioStationAiDTO>of()) : Uni.join().all(unis).andFailFast())
-                            .map(list -> {
-                                List<RadioStationAiDTO> stationsList = new ArrayList<>(list);
-                                AvailableStationsAiDTO container = new AvailableStationsAiDTO();
-                                container.setRadioStations(stationsList);
-                                return container;
-                            });
                 });
     }
 
@@ -176,35 +114,6 @@ public class AiHelperService {
                     aiDto.setLabels(tuple.getItem2());
                     return aiDto;
                 });
-    }
-
-    private RadioStationAiDTO toRadioStationAiDTO(BrandDTO brandDTO, AiAgent agent) {
-        RadioStationAiDTO b = new RadioStationAiDTO();
-        b.setLocalizedName(brandDTO.getLocalizedName());
-        b.setSlugName(brandDTO.getSlugName());
-        b.setCountry(brandDTO.getCountry());
-        b.setHlsUrl(brandDTO.getHlsUrl());
-        b.setMp3Url(brandDTO.getMp3Url());
-        b.setMixplaUrl(brandDTO.getMixplaUrl());
-        b.setTimeZone(brandDTO.getTimeZone());
-        b.setDescription(brandDTO.getDescription());
-        b.setBitRate(brandDTO.getBitRate());
-        b.setStreamStatus(brandDTO.getStatus());
-        if (agent != null) {
-            b.setDjName(agent.getName());
-            List<LanguageTag> langs = agent.getPreferredLang().stream()
-                    .sorted(Comparator.comparingDouble(LanguagePreference::getWeight).reversed())
-                    .map(LanguagePreference::getLanguageTag)
-                    .collect(Collectors.toList());
-            b.setAiAgentLang(langs);
-        }
-
-        if (brandDTO.isAiOverridingEnabled()){
-            AiOverridingDTO aiOverriding = brandDTO.getAiOverriding();
-            b.setOverriddenDjName(aiOverriding.getName());
-            b.setAdditionalUserInstruction(aiOverriding.getPrompt());
-        }
-        return b;
     }
 
 }
