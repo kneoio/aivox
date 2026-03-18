@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.messaging.MetricPublisher;
-import com.semantyca.aivox.service.QueueService;
 import com.semantyca.aivox.service.StreamingService;
 import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
 import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
@@ -39,116 +38,11 @@ public class DebugResource {
     
     public void setupRoutes(Router router) {
         String path = "/aivox/debug";
-        router.route(HttpMethod.POST, path + "/stream/:brand").handler(this::validateDebugAccess).handler(this::createStream);
-        router.route(HttpMethod.DELETE, path + "/stream/:brand").handler(this::validateDebugAccess).handler(this::stopStream);
         router.route(HttpMethod.GET, path + "/streams").handler(this::validateDebugAccess).handler(this::listStreams);
         router.route(HttpMethod.POST, path + "/queue/:brand").handler(this::validateDebugAccess).handler(this::testAddToQueue);
     }
     
-    private void createStream(RoutingContext rc) {
-        String brand = rc.pathParam("brand").toLowerCase();
-        
-        streamingService.initializeStation(brand)
-            .subscribe()
-            .with(
-                bundle -> {
-                    // Publish station started metric
-                    publishStationMetric(brand, "STATION_STARTED", Map.of(
-                        "brand", brand,
-                        "status", "initialized",
-                        "active", bundle.isActive(),
-                        "createdAt", bundle.getCreatedAt().toString(),
-                        "source", "debug_api"
-                    ));
-                    
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("brand", brand);
-                    response.put("status", "initialized");
-                    response.put("active", bundle.isActive());
-                    response.put("createdAt", bundle.getCreatedAt());
-                    
-                    try {
-                        String jsonResponse = objectMapper.writeValueAsString(response);
-                        rc.response()
-                            .putHeader("Content-Type", "application/json")
-                            .end(jsonResponse);
-                    } catch (Exception e) {
-                        LOGGER.error("Failed to serialize JSON response", e);
-                        rc.response()
-                            .setStatusCode(500)
-                            .putHeader("Content-Type", "application/json")
-                            .end("{\"error\": \"Internal server error\"}");
-                    }
-                    
-                    LOGGER.info("Stream initialized for brand: " + brand);
-                },
-                failure -> {
-                    // Publish station start failed metric
-                    publishStationMetric(brand, "STATION_START_FAILED", Map.of(
-                        "brand", brand,
-                        "error", failure.getMessage(),
-                        "source", "debug_api"
-                    ));
-                    
-                    LOGGER.error("Failed to create stream for brand: " + brand, failure);
-                    rc.response()
-                        .setStatusCode(500)
-                        .putHeader("Content-Type", "application/json")
-                        .end("{\"error\": \"Failed to create stream: " + failure.getMessage() + "\"}");
-                }
-            );
-    }
-    
-    private void stopStream(RoutingContext rc) {
-        String brand = rc.pathParam("brand").toLowerCase();
-        
-        streamingService.stopStation(brand)
-            .subscribe()
-            .with(
-                bundle -> {
-                    // Publish station stopped metric
-                    publishStationMetric(brand, "STATION_STOPPED", Map.of(
-                        "brand", brand,
-                        "status", "stopped",
-                        "source", "debug_api"
-                    ));
-                    
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("brand", brand);
-                    response.put("status", "stopped");
-                    
-                    try {
-                        String jsonResponse = objectMapper.writeValueAsString(response);
-                        rc.response()
-                            .putHeader("Content-Type", "application/json")
-                            .end(jsonResponse);
-                    } catch (Exception e) {
-                        LOGGER.error("Failed to serialize JSON response", e);
-                        rc.response()
-                            .setStatusCode(500)
-                            .putHeader("Content-Type", "application/json")
-                            .end("{\"error\": \"Internal server error\"}");
-                    }
-                    
-                    LOGGER.info("Stream stopped for brand: " + brand);
-                },
-                failure -> {
-                    // Publish station stop failed metric
-                    publishStationMetric(brand, "STATION_STOP_FAILED", Map.of(
-                        "brand", brand,
-                        "error", failure.getMessage(),
-                        "source", "debug_api"
-                    ));
-                    
-                    LOGGER.error("Failed to stop stream for brand: " + brand, failure);
-                    rc.response()
-                        .setStatusCode(500)
-                        .putHeader("Content-Type", "application/json")
-                        .end("{\"error\": \"Failed to stop stream: " + failure.getMessage() + "\"}");
-                }
-            );
-    }
-    
+
     private void listStreams(RoutingContext rc) {
         streamingService.getActiveStations()
             .subscribe()
@@ -245,12 +139,12 @@ public class DebugResource {
         return false;
     }
 
-    private void publishStationMetric(String brand, String eventType, Map<String, Object> payload) {
+    private void publishStationMetric(String brand, MetricEventType eventType, Map<String, Object> payload) {
         try {
             MetricEventDTO event = MetricEventDTO.of(
                 "debug-api",
                 brand,
-                MetricEventType.valueOf(eventType),
+                eventType,
                 UUID.randomUUID(),
                 payload
             );

@@ -20,6 +20,9 @@ public interface AivoxConfig {
     @WithDefault("http://localhost:38799")
     String getAgentUrl();
 
+    @WithName("jesoos.url")
+    String getJesoosUrl();
+
     Path path();
 
     Ffmpeg ffmpeg();

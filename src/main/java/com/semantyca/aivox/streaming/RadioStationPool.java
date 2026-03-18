@@ -1,5 +1,6 @@
 package com.semantyca.aivox.streaming;
 
+import com.semantyca.aivox.EnvConst;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.config.HlsConfig;
 import com.semantyca.aivox.messaging.MetricPublisher;
@@ -10,6 +11,8 @@ import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.SoundFragmentBrandService;
 import com.semantyca.aivox.service.manipulation.AudioSegmentationService;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
 import com.semantyca.mixpla.model.stream.IStream;
 import io.quarkus.runtime.Startup;
@@ -24,6 +27,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Startup
@@ -109,6 +114,7 @@ public class RadioStationPool {
                     return Uni.createFrom().item(radioStream);
                 })
                 .onFailure().retry().withBackOff(Duration.ofSeconds(1), Duration.ofSeconds(5)).atMost(3)
+                .invoke(stream -> publishStationInitializedMetric(brandName, stream))
                 .onFailure().invoke(failure ->
                         LOGGER.errorf("%s Failed to initialize station after retries: %s", logPrefix(brandName), failure.getMessage(), failure)
                 );
@@ -149,6 +155,38 @@ public class RadioStationPool {
 
     private String logPrefix(String brand) {
         return "[" + brand + "]";
+    }
+
+    private void publishStationInitializedMetric(String brandName, RadioStream stream) {
+        if (stream == null) {
+            return;
+        }
+
+        Map<String, Object> payload = Map.of(
+                "brand", brandName,
+                "status", "initialized",
+                "active", stream.isActive(),
+                "createdAt", stream.getCreatedAt() != null ? stream.getCreatedAt().toString() : null,
+                "source", "radio_station_pool"
+        );
+
+        try {
+            MetricEventDTO event = MetricEventDTO.of(
+                    EnvConst.APP_ID,
+                    brandName,
+                    MetricEventType.INFORMATION,
+                    UUID.randomUUID(),
+                    payload
+            );
+
+            metricPublisher.publish(event)
+                    .subscribe().with(
+                            ignored -> LOGGER.debugf("%s Published station initialization metric", logPrefix(brandName)),
+                            failure -> LOGGER.errorf(failure, "%s Failed to publish station initialization metric", logPrefix(brandName))
+                    );
+        } catch (Exception e) {
+            LOGGER.errorf(e, "%s Failed to create station initialization metric", logPrefix(brandName));
+        }
     }
 
     public Collection<RadioStream> getActiveStations() {

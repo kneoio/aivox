@@ -1,8 +1,8 @@
 package com.semantyca.aivox.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kneo.officeframe.service.GenreService;
-import io.kneo.officeframe.service.LabelService;
+import com.semantyca.officeframe.service.GenreService;
+import com.semantyca.officeframe.service.LabelService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

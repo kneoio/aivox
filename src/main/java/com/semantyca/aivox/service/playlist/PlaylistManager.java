@@ -46,7 +46,6 @@ public class PlaylistManager implements IPlaylistManager {
     private static final int TRIGGER_SELF_MANAGING = 2;
     private static final int PROCESSED_QUEUE_MAX_SIZE = 2;
     private static final long STARVING_FEED_COOLDOWN_MILLIS = 20_000L;
-    private static final int QUEUE_METRICS_INTERVAL_SECONDS = 10;
 
     private final ReadWriteLock slicedFragmentsLock = new ReentrantReadWriteLock();
     private final PlaylistState playlistState = new PlaylistState();
@@ -135,6 +134,7 @@ public class PlaylistManager implements IPlaylistManager {
                                         .forEach(playlistState.regularQueue::offer);
                                 initialized = true;
                                 initializing = false;
+                                publishQueueMetricsSafe();
                             })
                             .replaceWithVoid();
                 })
@@ -162,13 +162,6 @@ public class PlaylistManager implements IPlaylistManager {
             }
         }, 10, SELF_MANAGING_INTERVAL_SECONDS, TimeUnit.SECONDS);
 
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                publishQueueMetrics();
-            } catch (Exception e) {
-                LOGGER.errorf(e, "%s Error publishing queue metrics", logPrefix());
-            }
-        }, QUEUE_METRICS_INTERVAL_SECONDS, QUEUE_METRICS_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
 
@@ -259,7 +252,7 @@ public class PlaylistManager implements IPlaylistManager {
                 soundFragment.getFileMetadataList() != null ? soundFragment.getFileMetadataList().isEmpty() : "N/A");*/
         
         if (soundFragment.getFileMetadataList() != null && !soundFragment.getFileMetadataList().isEmpty()) {
-            FileMetadata existingMetadata = soundFragment.getFileMetadataList().get(0);
+            FileMetadata existingMetadata = soundFragment.getFileMetadataList().getFirst();
             LOGGER.infof("%s Found FileMetadata, temporaryFilePath=%s", logPrefix(), existingMetadata.getTemporaryFilePath());
             if (existingMetadata.getTemporaryFilePath() != null) {
                 LOGGER.infof("%s Using pre-set temporary file: %s", logPrefix(), existingMetadata.getTemporaryFilePath());
@@ -316,6 +309,7 @@ public class PlaylistManager implements IPlaylistManager {
                                                         logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                                         segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                                             }
+                                            publishQueueMetricsSafe();
                                             return Uni.createFrom().item(true);
                                         });
                             })
@@ -350,6 +344,7 @@ public class PlaylistManager implements IPlaylistManager {
                                 logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                 segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                     }
+                    publishQueueMetricsSafe();
                     return Uni.createFrom().item(true);
                 });
     }
@@ -366,23 +361,25 @@ public class PlaylistManager implements IPlaylistManager {
 
         if (!playlistState.prioritizedQueue.isEmpty()) {
             LiveSoundFragment next = playlistState.prioritizedQueue.poll();
+            publishQueueMetricsSafe();
             moveFragmentToProcessedList(next);
             return next;
         }
 
         if (!playlistState.regularQueue.isEmpty()) {
             LiveSoundFragment next = playlistState.regularQueue.poll();
+            publishQueueMetricsSafe();
             moveFragmentToProcessedList(next);
             return next;
         }
 
         LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
         // Dispatch onto Vert.x event loop — never block or subscribe from caller thread
-        vertx.runOnContext(() -> feedFragments(1, true)
+     /*   vertx.runOnContext(() -> feedFragments(1, true)
                 .subscribe().with(
                         v -> LOGGER.debugf("%s Starving feed complete", logPrefix()),
                         e -> LOGGER.errorf(e, "%s Starving feed failed", logPrefix())
-                ));
+                ));*/
 
         if (waitingAudioProvider.isWaitingAudioAvailable()) {
             return waitingAudioProvider.createWaitingFragment()
@@ -437,7 +434,16 @@ public class PlaylistManager implements IPlaylistManager {
         }
         playlistState.regularQueue.clear();
         playlistState.prioritizedQueue.clear();
+        publishQueueMetricsSafe();
         LOGGER.infof("%s Shutdown complete.", logPrefix());
+    }
+
+    private void publishQueueMetricsSafe() {
+        try {
+            publishQueueMetrics();
+        } catch (Exception e) {
+            LOGGER.errorf(e, "%s Error publishing queue metrics", logPrefix());
+        }
     }
 
     private void publishQueueMetrics() {
@@ -452,7 +458,7 @@ public class PlaylistManager implements IPlaylistManager {
         MetricEventDTO event = MetricEventDTO.of(
                 serviceId,
                 brand,
-                MetricEventType.QUEUE_MESSAGE_SENT,
+                MetricEventType.INFORMATION,
                 UUID.randomUUID(),
                 payload
         );

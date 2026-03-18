@@ -1,65 +1,643 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>HLS Test Player</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aivox · Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: monospace; margin: 24px; background: #111; color: #eee; }
-        h1 { font-size: 1.2em; margin-bottom: 16px; color: #fff; }
-        .row { margin: 8px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        input[type="text"] { flex: 1; min-width: 300px; padding: 6px 8px; background: #222; color: #eee; border: 1px solid #444; font-family: monospace; }
-        button { padding: 6px 12px; background: #333; color: #eee; border: 1px solid #555; cursor: pointer; font-family: monospace; }
-        button:hover { background: #444; }
-        button.danger { border-color: #a33; }
-        button.danger:hover { background: #522; }
-        audio { width: 100%; max-width: 900px; margin: 8px 0; }
-        #log { margin-top: 16px; background: #000; border: 1px solid #333; padding: 10px; height: 320px; overflow-y: auto; font-size: 0.82em; line-height: 1.6; }
+        :root {
+            --bg: #1a1a1a;
+            --surface: #2a2a2a;
+            --surface2: #1a1a1a;
+            --border: #333333;
+            --border-bright: #444444;
+            --accent: #2196F3;
+            --accent2: #42A5F5;
+            --accent3: #fa6d6d;
+            --amber: #f5a623;
+            --text: #f0f0f0;
+            --text-muted: #d0d0d0;
+            --text-dim: #b0b0b0;
+            --mono: 'IBM Plex Mono', monospace;
+            --sans: 'Space Grotesk', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0,229,176,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,176,0.025) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.4;
+            top: -2px;
+            animation: scanline 6s linear infinite;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        @keyframes scanline {
+            to { top: 100vh; }
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            grid-row: 1 / 3;
+            border-right: 1px solid var(--border);
+            padding: 32px 0;
+            display: flex;
+            flex-direction: column;
+            background: rgba(13,13,26,0.7);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .logo {
+            padding: 0 24px 32px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-text {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            letter-spacing: 4px;
+            color: var(--accent);
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .logo-sub {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+
+        .sidebar-section {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .section-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .sidebar-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 0 24px;
+        }
+
+        /* Station select */
+        .station-select {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            background: var(--surface);
+            border: 1px solid var(--border-bright);
+            color: var(--text-muted);
+            padding: 8px 12px;
+            border-radius: 3px;
+            width: 100%;
+            appearance: none;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .station-select:focus {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .select-wrap {
+            position: relative;
+        }
+
+        .select-wrap::after {
+            content: '›';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg);
+            color: var(--text-dim);
+            pointer-events: none;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+        }
+
+        /* URL input */
+        .url-input {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            background: var(--surface);
+            border: 1px solid var(--border-bright);
+            color: var(--text-muted);
+            padding: 8px 12px;
+            border-radius: 3px;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.15s;
+            letter-spacing: 0.3px;
+        }
+
+        .url-input:focus {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        /* Stat items */
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-family: var(--mono);
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--accent);
+            line-height: 1;
+        }
+
+        .stat-value.amber { color: var(--amber); }
+        .stat-value.red   { color: var(--accent3); }
+
+        .stat-value.small {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        /* Status indicator */
+        .status-indicator {
+            margin-top: auto;
+            padding: 20px 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+            transition: background 0.3s;
+        }
+
+        .status-dot.playing  { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse-dot 2s ease-in-out infinite; }
+        .status-dot.buffering { background: var(--amber); animation: pulse-dot 1s ease-in-out infinite; }
+        .status-dot.error    { background: var(--accent3); }
+        .status-dot.stopped  { background: var(--text-dim); }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .status-text {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+
+        /* ── Topbar ── */
+        .topbar {
+            grid-column: 2;
+            padding: 24px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(8,8,16,0.8);
+            backdrop-filter: blur(8px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .topbar-title {
+            font-size: 0.75rem;
+            letter-spacing: 3px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 400;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        /* ── Main ── */
+        .main {
+            grid-column: 2;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        /* Player card */
+        .player-card {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            background: var(--surface);
+        }
+
+        .player-card-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .player-card-body {
+            padding: 20px 20px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Custom audio player */
+        .player-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .play-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 3px;
+            border: 1px solid var(--border-bright);
+            background: var(--surface2);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+            transition: all 0.15s;
+            font-family: var(--mono);
+        }
+
+        .play-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(33,150,243,0.08);
+        }
+
+        .play-btn.active {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .volume-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .vol-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 80px;
+            height: 2px;
+            background: var(--border-bright);
+            border-radius: 1px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            border: none;
+        }
+
+        audio {
+            display: none;
+        }
+
+        /* Waveform viz */
+        .waveform-wrap {
+            height: 48px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            background: var(--surface2);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .waveform-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .waveform-idle {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        /* Buttons row */
+        .btn-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .action-btn {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            background: transparent;
+            border: 1px solid var(--border-bright);
+            padding: 6px 14px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+
+        .action-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .action-btn.danger:hover {
+            border-color: var(--accent3);
+            color: var(--accent3);
+        }
+
+        /* Log */
+        .log-card {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            background: var(--surface);
+            margin-top: 2px;
+        }
+
+        .log-card-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .log-body {
+            background: var(--surface2);
+            height: 280px;
+            overflow-y: auto;
+            padding: 12px 16px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            line-height: 1.7;
+        }
+
+        .log-line { display: flex; gap: 10px; }
+        .log-ts   { color: #555; flex-shrink: 0; }
         .log-info  { color: #8cf; }
         .log-ok    { color: #4d4; }
-        .log-warn  { color: #fa0; }
-        .log-error { color: #f55; }
-        .log-event { color: #aaa; }
-        .ts { color: #555; margin-right: 6px; }
-        label { color: #aaa; white-space: nowrap; }
-        #statusDot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #555; margin-right: 6px; }
-        #statusDot.green  { background: #4d4; }
-        #statusDot.red    { background: #f55; }
-        #statusDot.yellow { background: #fa0; }
+        .log-warn  { color: var(--amber); }
+        .log-error { color: var(--accent3); }
+        .log-event { color: #888; }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+        @media (max-width: 768px) {
+            .layout { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+            .topbar, .main { grid-column: 1; }
+        }
     </style>
 </head>
 <body>
 
-<h1>HLS Test Player</h1>
+<div class="layout">
 
-<div class="row">
-    <label>Station:</label>
-    <select id="station">
-        <option value="lumisonic">lumisonic</option>
-    </select>
-    <button id="startStream">Start Stream</button>
-    <button id="stopStream" class="danger">Stop Stream</button>
-    <span id="streamStatus" style="color:#aaa;font-size:0.85em;"></span>
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-text">aivox</div>
+            <div class="logo-sub">stream player</div>
+        </div>
+
+        <div class="sidebar-section">
+            <span class="section-label">Station</span>
+            <div class="select-wrap">
+                <select class="station-select" id="station">
+                    <option value="lumisonic">lumisonic</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-section">
+            <span class="section-label">HLS URL</span>
+            <input class="url-input" id="src" type="text" spellcheck="false" />
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-section">
+            <div class="stat-item">
+                <span class="stat-label">frags loaded</span>
+                <span class="stat-value" id="stat-frags">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">last frag</span>
+                <span class="stat-value amber small" id="stat-frag-size">—</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">errors</span>
+                <span class="stat-value red" id="stat-errors">0</span>
+            </div>
+        </div>
+
+        <div class="status-indicator">
+            <div class="status-row">
+                <div class="status-dot stopped" id="status-dot"></div>
+                <span class="status-text" id="status-text">idle</span>
+            </div>
+        </div>
+    </aside>
+
+    <header class="topbar">
+        <span class="topbar-title">audio player</span>
+        <div class="topbar-right">
+            <div class="live-badge" id="live-badge" style="display:none">
+                <div class="live-dot"></div>
+                <span>live</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+
+        <div class="player-card" id="player-card">
+            <div class="player-card-header">
+                <span class="card-label">stream control</span>
+                <div class="btn-row">
+                    <button class="action-btn" id="startStream">start stream</button>
+                    <button class="action-btn danger" id="stopStream">stop stream</button>
+                    <button class="action-btn" id="loadBtn">load hls</button>
+                    <button class="action-btn danger" id="stopBtn">stop</button>
+                </div>
+            </div>
+            <div class="player-card-body">
+                <div class="waveform-wrap">
+                    <canvas class="waveform-canvas" id="waveform"></canvas>
+                    <div class="waveform-idle" id="waveform-idle">no signal</div>
+                </div>
+                <div class="player-controls">
+                    <button class="play-btn" id="play-pause-btn" title="Play / Pause">▶</button>
+                    <span style="font-family:var(--mono);font-size:0.65rem;color:var(--text-dim);letter-spacing:1px;" id="stream-label">—</span>
+                    <div class="volume-wrap">
+                        <span class="vol-label">vol</span>
+                        <input type="range" id="vol" min="0" max="1" step="0.02" value="1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="log-card" id="log-card">
+            <div class="log-card-header">
+                <span class="card-label">log</span>
+                <button class="action-btn" id="copyLog">copy</button>
+            </div>
+            <div class="log-body" id="log"></div>
+        </div>
+
+        <audio id="audio"></audio>
+
+    </main>
 </div>
-
-<div class="row">
-    <label>HLS URL:</label>
-    <input id="src" type="text" spellcheck="false" />
-    <button id="loadBtn">&#9654; Load</button>
-    <button id="stopBtn" class="danger">&#9632; Stop</button>
-</div>
-
-<div class="row">
-    <span id="statusDot"></span>
-    <span id="statusText" style="font-size:0.85em;color:#aaa;">idle</span>
-</div>
-
-<audio id="audio" controls></audio>
-
-<div style="margin-top:8px;"><button id="copyLog">Copy Log</button></div>
-<div id="log"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
     const audio      = document.getElementById('audio');
     const srcInput   = document.getElementById('src');
@@ -69,44 +647,116 @@
     const stationSel = document.getElementById('station');
     const startBtn   = document.getElementById('startStream');
     const stopSrvBtn = document.getElementById('stopStream');
-    const streamSt   = document.getElementById('streamStatus');
-    const statusDot  = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
+    const statusDot  = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const liveBadge  = document.getElementById('live-badge');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const streamLabel  = document.getElementById('stream-label');
+    const volInput     = document.getElementById('vol');
+    const statFrags    = document.getElementById('stat-frags');
+    const statFragSize = document.getElementById('stat-frag-size');
+    const statErrors   = document.getElementById('stat-errors');
+    const waveformIdle = document.getElementById('waveform-idle');
 
     const params = new URLSearchParams(window.location.search);
     srcInput.value = params.get('src') || 'http://localhost:38798/stream/lumisonic/stream.m3u8';
 
+    let fragCount = 0, errorCount = 0;
+
+    // ── Waveform ───────────────────────────────────────────────────────────────
+    const canvas = document.getElementById('waveform');
+    let audioCtx = null, analyser = null, source = null, animId = null;
+
+    function startViz() {
+        if (audioCtx) return;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 128;
+            source = audioCtx.createMediaElementSource(audio);
+            source.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            waveformIdle.style.display = 'none';
+            drawWave();
+        } catch(e) {
+            log('Waveform unavailable: ' + e.message, 'warn');
+        }
+    }
+
+    function drawWave() {
+        const ctx = canvas.getContext('2d');
+        const W = canvas.offsetWidth, H = canvas.offsetHeight;
+        canvas.width = W; canvas.height = H;
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+
+        function frame() {
+            animId = requestAnimationFrame(frame);
+            analyser.getByteFrequencyData(buf);
+            ctx.clearRect(0, 0, W, H);
+            const barW = W / buf.length;
+            buf.forEach((v, i) => {
+                const h = (v / 255) * H;
+                const alpha = 0.3 + (v / 255) * 0.7;
+                ctx.fillStyle = `rgba(33,150,243,${alpha})`;
+                ctx.fillRect(i * barW, H - h, barW - 1, h);
+            });
+        }
+        frame();
+    }
+
+    function stopViz() {
+        if (animId) cancelAnimationFrame(animId);
+        animId = null;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        waveformIdle.style.display = 'flex';
+    }
+
     // ── Logging ────────────────────────────────────────────────────────────────
     function log(msg, type = 'info') {
         const now = new Date();
-        const ts = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+        const ts = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
         const line = document.createElement('div');
-        line.innerHTML = `<span class="ts">${ts}</span><span class="log-${type}">${escHtml(msg)}</span>`;
+        line.className = 'log-line';
+        line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${type}">${esc(msg)}</span>`;
         logEl.appendChild(line);
         logEl.scrollTop = logEl.scrollHeight;
     }
-    function escHtml(s) {
+
+    function esc(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
-    function setStatus(label, color) {
-        statusDot.className = color || '';
+
+    function setStatus(label, cls) {
+        statusDot.className = 'status-dot ' + cls;
         statusText.textContent = label;
+        if (cls === 'playing') {
+            liveBadge.style.display = 'flex';
+        } else {
+            liveBadge.style.display = 'none';
+        }
     }
 
-    // ── Stream control (server-side) ───────────────────────────────────────────
+    function animateNumber(el, value) {
+        const current = parseInt(el.textContent) || 0;
+        gsap.to({ v: current }, {
+            v: value, duration: 0.4, ease: 'power2.out',
+            onUpdate: function() { el.textContent = Math.round(this.targets()[0].v); }
+        });
+    }
+
+    // ── Server stream control ──────────────────────────────────────────────────
     async function serverAction(method) {
         const brand = stationSel.value;
-        const action = method === 'POST' ? 'Starting' : 'Stopping';
-        streamSt.textContent = action + '...';
+        const action = method === 'POST' ? 'starting' : 'stopping';
         log(`${action} server stream [${brand}]`, 'info');
         try {
-            const r = await fetch('/aivox/debug/stream/' + brand, { method });
+            const r = await fetch('/aivox/' + brand + '/command/', { method });
             const text = await r.text();
-            streamSt.textContent = r.ok ? 'OK' : 'Error';
-            log(`Server response ${r.status}: ${text}`, r.ok ? 'ok' : 'error');
-        } catch (e) {
-            streamSt.textContent = 'Error';
-            log('Server action failed: ' + e.message, 'error');
+            log(`server ${r.status}: ${text}`, r.ok ? 'ok' : 'error');
+            if (r.ok) gsap.fromTo('#player-card', { borderColor: 'rgba(33,150,243,0.8)' }, { borderColor: 'rgba(255,255,255,0.06)', duration: 1.2 });
+        } catch(e) {
+            log('server action failed: ' + e.message, 'error');
         }
     }
     startBtn.addEventListener('click', () => serverAction('POST'));
@@ -124,36 +774,44 @@
         audio.removeAttribute('src');
         audio.load();
         audioEventsAttached = false;
-        setStatus('stopped', '');
-        log('Stopped.', 'info');
+        stopViz();
+        setStatus('stopped', 'stopped');
+        playPauseBtn.textContent = '▶';
+        playPauseBtn.classList.remove('active');
+        streamLabel.textContent = '—';
+        log('stopped.', 'info');
     }
 
     function bindAudioEvents() {
         if (audioEventsAttached) return;
         audioEventsAttached = true;
-        ['play','pause','playing','waiting','stalled','ended','error'].forEach(ev => {
-            audio.addEventListener(ev, () => {
-                log('audio: ' + ev, 'event');
-                if (ev === 'playing') setStatus('playing ▶', 'green');
-                if (ev === 'waiting' || ev === 'stalled') setStatus(ev + '…', 'yellow');
-                if (ev === 'error')   { log('audio.error code: ' + (audio.error ? audio.error.code : '?'), 'error'); setStatus('error', 'red'); }
-                if (ev === 'ended')   setStatus('ended', '');
-            });
+        audio.addEventListener('play',    () => { playPauseBtn.textContent = '❚❚'; playPauseBtn.classList.add('active'); });
+        audio.addEventListener('pause',   () => { playPauseBtn.textContent = '▶';  playPauseBtn.classList.remove('active'); });
+        audio.addEventListener('playing', () => { setStatus('playing', 'playing'); startViz(); });
+        audio.addEventListener('waiting', () => setStatus('buffering…', 'buffering'));
+        audio.addEventListener('stalled', () => setStatus('stalled…', 'buffering'));
+        audio.addEventListener('ended',   () => { setStatus('ended', 'stopped'); stopViz(); });
+        audio.addEventListener('error',   () => {
+            log('audio error code: ' + (audio.error ? audio.error.code : '?'), 'error');
+            setStatus('error', 'error');
+            errorCount++;
+            animateNumber(statErrors, errorCount);
+        });
+        ['play','pause','playing','waiting','stalled','ended'].forEach(ev => {
+            audio.addEventListener(ev, () => log('audio: ' + ev, 'event'));
         });
     }
 
     function load(src) {
         stop();
         hlsDestroyed = false;
-        log('─── Load: ' + src, 'info');
-        log('hls.js supported: ' + (window.Hls ? Hls.isSupported() : 'hls.js not loaded'), 'info');
-        log('Native HLS: ' + !!audio.canPlayType('application/vnd.apple.mpegurl'), 'info');
-        setStatus('loading…', 'yellow');
+        log('─── load: ' + src, 'info');
+        setStatus('loading…', 'buffering');
+        streamLabel.textContent = src.split('/').pop();
 
-        // Native HLS — Safari only (Firefox falsely reports support)
         const isRealNativeHls = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         if (isRealNativeHls && audio.canPlayType('application/vnd.apple.mpegurl')) {
-            log('Using native HLS (Safari)', 'ok');
+            log('using native HLS (Safari)', 'ok');
             audio.src = src;
             bindAudioEvents();
             audio.play().catch(e => log('play() rejected: ' + e.message, 'warn'));
@@ -161,52 +819,48 @@
         }
 
         if (!window.Hls || !Hls.isSupported()) {
-            log('hls.js not supported — cannot play HLS', 'error');
-            setStatus('unsupported', 'red');
+            log('hls.js not supported', 'error');
+            setStatus('unsupported', 'error');
             return;
         }
 
-        log('Using hls.js v' + Hls.version, 'info');
+        log('using hls.js v' + Hls.version, 'info');
 
         hls = new Hls({
-            enableWorker: true,
-            debug: false,
-            startPosition: -1,
-            liveSyncDurationCount: 3,
-            liveMaxLatencyDurationCount: 5,
+            enableWorker: true, debug: false, startPosition: -1,
+            liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 5,
             maxBufferLength: 30,
-            manifestLoadingTimeOut: 10000,
-            manifestLoadingMaxRetry: 2,
-            manifestLoadingRetryDelay: 2000,
-            levelLoadingTimeOut: 10000,
-            levelLoadingMaxRetry: 2,
-            levelLoadingRetryDelay: 2000,
-            fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 3,
-            fragLoadingRetryDelay: 2000,
+            manifestLoadingTimeOut: 10000, manifestLoadingMaxRetry: 2, manifestLoadingRetryDelay: 2000,
+            levelLoadingTimeOut: 10000, levelLoadingMaxRetry: 2, levelLoadingRetryDelay: 2000,
+            fragLoadingTimeOut: 20000, fragLoadingMaxRetry: 3, fragLoadingRetryDelay: 2000,
         });
 
-        hls.on(Hls.Events.MANIFEST_LOADING,  (e, d) => log('Manifest loading: ' + d.url, 'event'));
-        hls.on(Hls.Events.MANIFEST_LOADED,   (e, d) => log('Manifest loaded', 'event'));
-        hls.on(Hls.Events.MANIFEST_PARSED,   (e, d) => {
-            log(`Manifest parsed — ${d.levels.length} level(s)`, 'ok');
-            setStatus('buffering…', 'yellow');
+        hls.on(Hls.Events.MANIFEST_LOADING, (e, d) => log('manifest loading: ' + d.url, 'event'));
+        hls.on(Hls.Events.MANIFEST_LOADED,  ()      => log('manifest loaded', 'event'));
+        hls.on(Hls.Events.MANIFEST_PARSED,  (e, d)  => {
+            log(`manifest parsed — ${d.levels.length} level(s)`, 'ok');
+            setStatus('buffering…', 'buffering');
             audio.play().catch(e => log('play() rejected: ' + e.message, 'warn'));
         });
-        hls.on(Hls.Events.LEVEL_LOADED,      (e, d) => log(`Level ${d.level} loaded — ${d.details.fragments.length} frags, live=${d.details.live}`, 'event'));
-        hls.on(Hls.Events.FRAG_LOADING,      (e, d) => log('Frag loading: ' + d.frag.url, 'event'));
-        hls.on(Hls.Events.FRAG_LOADED,       (e, d) => {
+        hls.on(Hls.Events.LEVEL_LOADED, (e, d) =>
+            log(`level ${d.level} loaded — ${d.details.fragments.length} frags, live=${d.details.live}`, 'event'));
+        hls.on(Hls.Events.FRAG_LOADING, (e, d) => log('frag loading: ' + d.frag.url, 'event'));
+        hls.on(Hls.Events.FRAG_LOADED,  (e, d) => {
+            fragCount++;
             const kb = (d.stats.loaded / 1024).toFixed(1);
             const ms = d.stats.loading.end - d.stats.loading.start;
-            log(`Frag loaded [sn=${d.frag.sn}] ${kb} KB in ${ms}ms`, 'ok');
+            log(`frag loaded [sn=${d.frag.sn}] ${kb} KB in ${ms}ms`, 'ok');
+            animateNumber(statFrags, fragCount);
+            statFragSize.textContent = kb + ' KB';
         });
 
         function destroyHls(reason) {
             if (hlsDestroyed) return;
             hlsDestroyed = true;
-            log('Destroying hls.js — ' + reason, 'error');
-            setStatus(reason, 'red');
+            log('destroying hls.js — ' + reason, 'error');
+            setStatus(reason, 'error');
             if (hls) { hls.destroy(); hls = null; }
+            stopViz();
         }
 
         hls.on(Hls.Events.ERROR, (e, data) => {
@@ -215,23 +869,21 @@
             const http  = data.response ? ` HTTP ${data.response.code}` : '';
             const url   = data.url ? ` — ${data.url}` : '';
             log(`${data.type} / ${data.details}${fatal}${http}${url}`, data.fatal ? 'error' : 'warn');
-
+            if (data.fatal) {
+                errorCount++;
+                animateNumber(statErrors, errorCount);
+            }
             if (!data.fatal) return;
-
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                 const code = data.response ? data.response.code : 0;
-                if (code === 404 || code === 403) {
-                    destroyHls('stream gone (' + code + ')');
-                    return;
-                }
-                log('Fatal network error → startLoad()', 'warn');
+                if (code === 404 || code === 403) { destroyHls('stream gone (' + code + ')'); return; }
+                log('fatal network → startLoad()', 'warn');
                 hls.startLoad();
             } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                log('Fatal media error → recoverMediaError()', 'warn');
+                log('fatal media → recoverMediaError()', 'warn');
                 hls.recoverMediaError();
             } else {
-                log('Unrecoverable — destroying', 'error');
-                setStatus('error', 'red');
+                log('unrecoverable — destroying', 'error');
                 hls.destroy(); hls = null;
             }
         });
@@ -242,16 +894,31 @@
         log('hls.js configured and loading source…', 'info');
     }
 
+    playPauseBtn.addEventListener('click', () => {
+        if (!audio.src && !hls) { load(srcInput.value); return; }
+        if (audio.paused) audio.play().catch(e => log('play() rejected: ' + e.message, 'warn'));
+        else audio.pause();
+    });
+
+    volInput.addEventListener('input', () => { audio.volume = parseFloat(volInput.value); });
+
     loadBtn.addEventListener('click', () => load(srcInput.value));
     stopBtn.addEventListener('click', stop);
 
     document.getElementById('copyLog').addEventListener('click', () => {
-        const text = Array.from(logEl.querySelectorAll('div'))
+        const text = Array.from(logEl.querySelectorAll('.log-line'))
             .map(d => d.textContent).join('\n');
-        navigator.clipboard.writeText(text).then(() => log('Log copied to clipboard', 'ok'));
+        navigator.clipboard.writeText(text).then(() => log('log copied to clipboard', 'ok'));
     });
 
-    log('Player ready — hls.js ' + (window.Hls ? 'v' + Hls.version : 'NOT loaded'), 'info');
+    // ── Entry animations ───────────────────────────────────────────────────────
+    gsap.from('.sidebar',     { x: -20, opacity: 0, duration: 0.6, ease: 'power3.out' });
+    gsap.from('.topbar',      { y: -10, opacity: 0, duration: 0.5, delay: 0.15, ease: 'power3.out' });
+    gsap.from('.player-card', { y: 12, opacity: 0, duration: 0.4, delay: 0.25, ease: 'power2.out' });
+    gsap.from('.log-card',    { y: 12, opacity: 0, duration: 0.4, delay: 0.35, ease: 'power2.out' });
+    gsap.from('.stat-item',   { y: 10, opacity: 0, duration: 0.4, stagger: 0.08, delay: 0.3, ease: 'power2.out' });
+
+    log('player ready — hls.js ' + (window.Hls ? 'v' + Hls.version : 'NOT loaded'), 'info');
 </script>
 </body>
 </html>

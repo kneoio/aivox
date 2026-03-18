@@ -1,33 +1,19 @@
 package com.semantyca.aivox.service.live;
 
 import com.semantyca.aivox.dto.BrandSoundFragmentDTO;
-import com.semantyca.aivox.dto.aihelper.llmtool.AvailableStationsAiDTO;
 import com.semantyca.aivox.dto.aihelper.llmtool.BrandSoundFragmentAiDTO;
-import com.semantyca.aivox.dto.aihelper.llmtool.RadioStationAiDTO;
 import com.semantyca.aivox.dto.dashboard.AiDjStatsDTO;
-import com.semantyca.aivox.dto.radiostation.AiOverridingDTO;
-import com.semantyca.aivox.dto.radiostation.BrandDTO;
-import com.semantyca.aivox.service.AiAgentService;
-import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.core.model.cnst.LanguageCode;
-import com.semantyca.core.model.cnst.LanguageTag;
-import com.semantyca.core.model.user.SuperUser;
-import com.semantyca.mixpla.model.aiagent.AiAgent;
-import com.semantyca.mixpla.model.aiagent.LanguagePreference;
-import com.semantyca.mixpla.model.cnst.StreamStatus;
-import io.kneo.officeframe.service.GenreService;
-import io.kneo.officeframe.service.LabelService;
+import com.semantyca.officeframe.service.GenreService;
+import com.semantyca.officeframe.service.LabelService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

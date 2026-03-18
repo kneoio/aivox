@@ -1,5 +1,6 @@
 package com.semantyca.aivox;
 
+import com.semantyca.aivox.rest.CommandResource;
 import com.semantyca.aivox.rest.InfoResource;
 import io.vertx.ext.web.Router;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -21,9 +22,14 @@ public class AivoxApplication {
     @Inject
     DebugResource debugResource;
 
+    @Inject
+    CommandResource commandResource;
+
+
     void setupRoutes(@Observes Router router) {
         streamingResource.setupRoutes(router);
         infoResource.setupRoutes(router);
+        commandResource.setupRoutes(router);
         debugResource.setupRoutes(router);
     }
 }
