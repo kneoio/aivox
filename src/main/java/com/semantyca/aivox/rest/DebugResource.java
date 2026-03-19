@@ -5,8 +5,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.semantyca.aivox.config.AivoxConfig;
 import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.service.StreamingService;
-import com.semantyca.mixpla.dto.queue.metric.MetricEventDTO;
-import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -17,7 +15,6 @@ import org.jboss.logging.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @ApplicationScoped
 public class DebugResource {
@@ -139,24 +136,4 @@ public class DebugResource {
         return false;
     }
 
-    private void publishStationMetric(String brand, MetricEventType eventType, Map<String, Object> payload) {
-        try {
-            MetricEventDTO event = MetricEventDTO.of(
-                "debug-api",
-                brand,
-                eventType,
-                UUID.randomUUID(),
-                payload
-            );
-            
-            metricPublisher.publish(event)
-                .subscribe()
-                .with(
-                    success -> LOGGER.infof("Published %s metric for brand %s", eventType, brand),
-                    failure -> LOGGER.errorf("Failed to publish %s metric for brand %s", eventType, brand, failure)
-                );
-        } catch (Exception e) {
-            LOGGER.errorf("Failed to create metric event %s for brand %s", eventType, brand, e);
-        }
-    }
 }

@@ -136,6 +136,22 @@ public class BrandRepository extends AsyncRepository {
                 .replaceWithVoid();
     }
 
+    public Uni<OffsetDateTime> findLastAccessTimeByStationName(String stationName) {
+        String sql = "SELECT last_access_time FROM " +
+                brandStats.getTableName() + " WHERE station_name = $1 ORDER BY last_access_time DESC LIMIT 1";
+
+        return client.preparedQuery(sql)
+                .execute(Tuple.of(stationName))
+                .onItem().transform(RowSet::iterator)
+                .onItem().transform(iterator -> {
+                    if (iterator.hasNext()) {
+                        return iterator.next().getOffsetDateTime("last_access_time");
+                    } else {
+                        return null;
+                    }
+                });
+    }
+
     private Brand from(Row row) {
         Brand doc = new Brand();
         setDefaultFields(doc, row);

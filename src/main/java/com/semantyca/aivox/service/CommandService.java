@@ -37,10 +37,9 @@ public class CommandService {
                 )
                 .invoke(bundle -> LOGGER.infof("Stream initialized for brand: %s", brand))
                 .onFailure().invoke(failure -> {
-                    publishStationMetric(brand, MetricEventType.FATAL_ERROR, Map.of(
+                    publishStationMetric(brand, MetricEventType.FATAL_ERROR, "init_stream", Map.of(
                             "brand", brand,
-                            "error", failure.getMessage(),
-                            "source", "debug_api"
+                            "error", failure.getMessage()
                     ));
                     LOGGER.errorf("Failed to create stream for brand: %s", brand, failure);
                 })
@@ -57,7 +56,7 @@ public class CommandService {
     public Uni<Map<String, Object>> stopStream(String brand) {
         return streamingService.stopStation(brand)
                 .invoke(bundle -> {
-                    publishStationMetric(brand, MetricEventType.INFORMATION, Map.of(
+                    publishStationMetric(brand, MetricEventType.INFORMATION, "stop_stream", Map.of(
                             "brand", brand,
                             "status", "stopped",
                             "source", "debug_api"
@@ -65,10 +64,9 @@ public class CommandService {
                     LOGGER.infof("Stream stopped for brand: %s", brand);
                 })
                 .onFailure().invoke(failure -> {
-                    publishStationMetric(brand, MetricEventType.ERROR, Map.of(
+                    publishStationMetric(brand, MetricEventType.ERROR, "stop_stream", Map.of(
                             "brand", brand,
-                            "error", failure.getMessage(),
-                            "source", "debug_api"
+                            "error", failure.getMessage()
                     ));
                     LOGGER.errorf("Failed to stop stream for brand: %s", brand, failure);
                 })
@@ -80,13 +78,14 @@ public class CommandService {
                 });
     }
 
-    private void publishStationMetric(String brand, MetricEventType eventType, Map<String, Object> payload) {
+    private void publishStationMetric(String brand, MetricEventType eventType, String code, Map<String, Object> payload) {
         try {
             MetricEventDTO event = MetricEventDTO.of(
                     EnvConst.APP_ID,
                     brand,
                     eventType,
                     UUID.randomUUID(),
+                    code,
                     payload
             );
 

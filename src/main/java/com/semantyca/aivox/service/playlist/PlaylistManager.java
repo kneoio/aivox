@@ -449,9 +449,6 @@ public class PlaylistManager implements IPlaylistManager {
     private void publishQueueMetrics() {
         Map<String, Object> payload = new HashMap<>();
         payload.put("brandId", brandId.toString());
-        payload.put("initialized", initialized);
-        
-        // Add song metadata for each queue, avoiding duplicates
         payload.put("regularQueueSongs", getUniqueSongMetadata(playlistState.regularQueue));
         payload.put("prioritizedQueueSongs", getUniqueSongMetadata(playlistState.prioritizedQueue));
         
@@ -460,6 +457,7 @@ public class PlaylistManager implements IPlaylistManager {
                 brand,
                 MetricEventType.INFORMATION,
                 UUID.randomUUID(),
+                "queue_updated",
                 payload
         );
         
@@ -474,8 +472,7 @@ public class PlaylistManager implements IPlaylistManager {
         if (fragments == null || fragments.isEmpty()) {
             return new ArrayList<>();
         }
-        
-        // Use a set to track unique song combinations (title + artist)
+
         java.util.Set<String> uniqueSongs = new java.util.HashSet<>();
         List<Map<String, Object>> result = new ArrayList<>();
         

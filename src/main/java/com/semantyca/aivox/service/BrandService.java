@@ -72,6 +72,10 @@ public class BrandService extends AbstractService<Brand, BrandDTO> {
         return repository.getBySlugName(name);
     }
 
+    public Uni<java.time.OffsetDateTime> findLastAccessTimeByStationName(String stationName) {
+        return repository.findLastAccessTimeByStationName(stationName);
+    }
+
     public Uni<List<BrandDTO>> getAllDTO(final int limit, final int offset) {
         assert repository != null;
         return repository.getAll(limit, offset)

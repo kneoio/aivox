@@ -18,7 +18,6 @@ import com.semantyca.mixpla.model.stream.IStream;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.core.Vertx;
-import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -26,7 +25,6 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,22 +67,6 @@ public class RadioStationPool {
         this.vertx = vertx;
     }
 
-    @PostConstruct
-    void initStationsFromWhitelist() {
-        List<String> whitelist = aivoxConfig.stationWhitelist().orElse(List.of());
-        LOGGER.infof("%s Initializing stations from whitelist: %s", logPrefix(), whitelist);
-        if (aivoxConfig.stationWhitelist().isPresent()) {
-            for (String brandName : whitelist) {
-                initializeStation(brandName)
-                        .subscribe()
-                        .with(
-                                bundle -> LOGGER.infof("%s Station initialized for brand: %s", logPrefix(brandName), brandName),
-                                failure -> LOGGER.errorf("%s Failed to initialize station for brand: %s", logPrefix(brandName), brandName, failure)
-                        );
-            }
-        }
-    }
-
     public Uni<RadioStream> initializeStation(String brandName) {
         LOGGER.infof("%s Attempting to initialize station for brand: %s", logPrefix(brandName), brandName);
 
@@ -109,8 +91,8 @@ public class RadioStationPool {
                         streamer.initialize();
                         return new RadioStream(brand, streamer, playlistManager);
                     });
-
-                    LOGGER.infof("%s Station stream ready (lazy initialization will occur on first use)", logPrefix(brandName));
+                    radioStream.setStatus(StreamStatus.WARMING_UP);
+                    LOGGER.infof("%s Station stream ready", logPrefix(brandName));
                     return Uni.createFrom().item(radioStream);
                 })
                 .onFailure().retry().withBackOff(Duration.ofSeconds(1), Duration.ofSeconds(5)).atMost(3)
@@ -164,7 +146,6 @@ public class RadioStationPool {
 
         Map<String, Object> payload = Map.of(
                 "brand", brandName,
-                "status", "initialized",
                 "active", stream.isActive(),
                 "createdAt", stream.getCreatedAt() != null ? stream.getCreatedAt().toString() : null,
                 "source", "radio_station_pool"
@@ -176,6 +157,7 @@ public class RadioStationPool {
                     brandName,
                     MetricEventType.INFORMATION,
                     UUID.randomUUID(),
+                    "radio_stream_initialized",
                     payload
             );
 

@@ -1,6 +1,7 @@
 package com.semantyca.aivox.service;
 
 import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.repository.soundfragment.SoundFragmentRepository;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
 import com.semantyca.aivox.service.manipulation.mixing.AudioConcatenator;
@@ -9,6 +10,7 @@ import com.semantyca.aivox.service.manipulation.mixing.handler.IntroSongHandler;
 import com.semantyca.aivox.service.soundfragment.SoundFragmentService;
 import com.semantyca.aivox.streaming.RadioStationPool;
 import com.semantyca.mixpla.dto.queue.livestream.SongQueueMessageDTO;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.model.cnst.MergingType;
 import com.semantyca.mixpla.model.stream.IStream;
@@ -22,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Random;
 
 @ApplicationScoped
@@ -46,6 +49,9 @@ public class QueueService {
 
     @Inject
     AudioConcatenator audioConcatenator;
+
+    @Inject
+    MetricPublisher metricPublisher;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(QueueService.class);
 
@@ -74,9 +80,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] INTRO_SONG operation completed successfully - messageId: {}, result: {}", messageId, result);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "intro_song_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "INTRO_SONG"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] INTRO_SONG operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "intro_song_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.NOT_MIXED) {
             LOGGER.info("Processing NOT_MIXED merging method for messageId: {}", messageId);
@@ -88,9 +98,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] NOT_MIXED operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "not_mixed_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "NOT_MIXED"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] NOT_MIXED operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "not_mixed_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.SONG_INTRO_SONG) {
             LOGGER.info("[QueueService] Processing SONG_INTRO_SONG merging method for messageId: {}", messageId);
@@ -101,9 +115,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] SONG_INTRO_SONG operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "song_intro_song_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "SONG_INTRO_SONG"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] SONG_INTRO_SONG operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "song_intro_song_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.INTRO_SONG_INTRO_SONG) {
             LOGGER.info("[QueueService] Processing INTRO_SONG_INTRO_SONG merging method for messageId: {}", messageId);
@@ -114,9 +132,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] INTRO_SONG_INTRO_SONG operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "intro_song_intro_song_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "INTRO_SONG_INTRO_SONG"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] INTRO_SONG_INTRO_SONG operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "intro_song_intro_song_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.SONG_CROSSFADE_SONG) {
             LOGGER.info("[QueueService] Processing SONG_CROSSFADE_SONG merging method for messageId: {}", messageId);
@@ -133,9 +155,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] SONG_CROSSFADE_SONG operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "song_crossfade_song_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "SONG_CROSSFADE_SONG"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] SONG_CROSSFADE_SONG operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "song_crossfade_song_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.SONG_ONLY) {
             LOGGER.info("[QueueService] Processing SONG_ONLY merging method for messageId: {}", messageId);
@@ -146,9 +172,13 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] SONG_ONLY operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "song_only_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "SONG_ONLY"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] SONG_ONLY operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "song_only_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else if (message.getMergingMethod() == MergingType.FILLER_JINGLE) {
             LOGGER.info("[QueueService] Processing FILLER_JINGLE merging method for messageId: {}", messageId);
@@ -158,13 +188,19 @@ public class QueueService {
                     })
                     .onItem().invoke(result -> {
                         LOGGER.info("[QueueService] FILLER_JINGLE operation completed successfully - messageId: {}", messageId);
+                        metricPublisher.publishMetric(brandName, MetricEventType.INFORMATION, "filler_jingle_completed",
+                                Map.of("messageId", messageId, "mergingMethod", "FILLER_JINGLE"), message.getTraceId());
                     })
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] FILLER_JINGLE operation failed - messageId: {}", messageId, err);
+                        metricPublisher.publishMetric(brandName, MetricEventType.ERROR, "filler_jingle_failed",
+                                Map.of("messageId", messageId, "error", err.getMessage()), message.getTraceId());
                     });
         } else {
             LOGGER.warn("[QueueService] Unknown or unsupported merging method: {} for messageId: {}", 
                     message.getMergingMethod(), messageId);
+            metricPublisher.publishMetric(brandName, MetricEventType.WARNING, "unsupported_merging_method",
+                    Map.of("messageId", messageId, "mergingMethod", String.valueOf(message.getMergingMethod())), message.getTraceId());
             return Uni.createFrom().item(Boolean.FALSE);
         }
     }
