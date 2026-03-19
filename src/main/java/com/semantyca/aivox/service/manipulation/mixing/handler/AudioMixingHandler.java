@@ -278,6 +278,56 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                 }))))));
     }
 
+    public Uni<Boolean> handleFillerJingle(IStream stream, SongQueueMessageDTO toQueueDTO) {
+        PlaylistManager playlistManager = (PlaylistManager) stream.getStreamer().getPlaylistManager();
+        SongInfoDTO songInfo1 = toQueueDTO.getSongs().get(SongKey.SONG_1);
+        SongInfoDTO songInfo2 = toQueueDTO.getSongs().get(SongKey.SONG_2);
+
+        LOGGER.info("[AudioMixingHandler] Processing FILLER_JINGLE with DIRECT_CONCAT");
+
+        return soundFragmentService.getById(songInfo1.getSongId())
+                .chain(sf1 -> soundFragmentRepository.getFirstFile(sf1.getId())
+                        .chain(meta1 -> meta1.materializeFileStream(tempBaseDir)
+                                .chain(tempPath1 ->
+                                        soundFragmentService.getById(songInfo2.getSongId())
+                                                .chain(sf2 -> soundFragmentRepository.getFirstFile(sf2.getId())
+                                                        .chain(meta2 -> meta2.materializeFileStream(tempBaseDir)
+                                                                .chain(tempPath2 -> {
+                                                                    String outputPath = outputDir + "/filler_jingle_" +
+                                                                            System.currentTimeMillis() + ".wav";
+                                                                    return audioConcatenator.concatenate(
+                                                                                    tempPath1.toString(),
+                                                                                    tempPath2.toString(),
+                                                                                    outputPath,
+                                                                                    ConcatenationType.DIRECT_CONCAT,
+                                                                                    0
+                                                                            )
+                                                                            .chain(finalPath -> {
+                                                                                SoundFragment concatenatedFragment = new SoundFragment();
+                                                                                if (sf1.getType() == PlaylistItemType.JINGLE) {
+                                                                                    concatenatedFragment.setId(sf2.getId());
+                                                                                    concatenatedFragment.setTitle(sf2.getTitle());
+                                                                                    concatenatedFragment.setArtist(sf2.getArtist());
+                                                                                } else {
+                                                                                    concatenatedFragment.setId(sf1.getId());
+                                                                                    concatenatedFragment.setTitle(sf1.getTitle() + " → " + sf2.getTitle());
+                                                                                    concatenatedFragment.setArtist(sf1.getArtist() + " / " + sf2.getArtist());
+                                                                                }
+                                                                                concatenatedFragment.setSource(SourceType.TEMPORARY_MIX);
+                                                                                concatenatedFragment.setType(PlaylistItemType.MIX_SONG_1_SONG_2);
+
+                                                                                FileMetadata fileMetadata = new FileMetadata();
+                                                                                fileMetadata.setTemporaryFilePath(Path.of(finalPath));
+                                                                                concatenatedFragment.setFileMetadataList(List.of(fileMetadata));
+
+                                                                                return playlistManager.addFragmentToQueue(
+                                                                                        concatenatedFragment,
+                                                                                        toQueueDTO.getPriority()
+                                                                                ).replaceWith(Boolean.TRUE);
+                                                                            });
+                                                                }))))));
+    }
+
 
     public Uni<String> createOutroIntroMix(String mainSongPath, String introSongPath, String outputPath, MixingProfile settings, double gainValue) {
         return Uni.createFrom().item(() -> {

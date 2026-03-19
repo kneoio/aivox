@@ -150,6 +150,18 @@ public class QueueService {
                     .onFailure().invoke(err -> {
                         LOGGER.error("[QueueService] SONG_ONLY operation failed - messageId: {}", messageId, err);
                     });
+        } else if (message.getMergingMethod() == MergingType.FILLER_JINGLE) {
+            LOGGER.info("[QueueService] Processing FILLER_JINGLE merging method for messageId: {}", messageId);
+            return getRadioStation(brandName)
+                    .chain(radioStation -> {
+                        return createAudioMixingHandler().handleFillerJingle(radioStation, message);
+                    })
+                    .onItem().invoke(result -> {
+                        LOGGER.info("[QueueService] FILLER_JINGLE operation completed successfully - messageId: {}", messageId);
+                    })
+                    .onFailure().invoke(err -> {
+                        LOGGER.error("[QueueService] FILLER_JINGLE operation failed - messageId: {}", messageId, err);
+                    });
         } else {
             LOGGER.warn("[QueueService] Unknown or unsupported merging method: {} for messageId: {}", 
                     message.getMergingMethod(), messageId);

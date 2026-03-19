@@ -430,6 +430,45 @@
             display: none;
         }
 
+        /* Now playing */
+        .now-playing {
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 14px 16px;
+            background: var(--surface2);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .np-label {
+            font-family: var(--mono);
+            font-size: 0.55rem;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .np-title {
+            font-family: var(--sans);
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .np-artist {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--accent2);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* Waveform viz */
         .waveform-wrap {
             height: 48px;
@@ -549,6 +588,13 @@
             <div class="select-wrap">
                 <select class="station-select" id="station">
                     <option value="lumisonic">lumisonic</option>
+                    <option value="sacana">sacana</option>
+                    <option value="em07chat">em07chat</option>
+                    <option value="malucra">malucra</option>
+                    <option value="bratan">bratan</option>
+                    <option value="sunonation">sunonation</option>
+                    <option value="mixplaclone">mixplaclone</option>
+                    <option value="aye-ayes-ear">aye-ayes-ear</option>
                 </select>
             </div>
         </div>
@@ -608,6 +654,13 @@
                 </div>
             </div>
             <div class="player-card-body">
+
+                <div class="now-playing" id="now-playing" style="display:none">
+                    <div class="np-label">now playing</div>
+                    <div class="np-title" id="np-title">—</div>
+                    <div class="np-artist" id="np-artist">—</div>
+                </div>
+
                 <div class="waveform-wrap">
                     <canvas class="waveform-canvas" id="waveform"></canvas>
                     <div class="waveform-idle" id="waveform-idle">no signal</div>
@@ -657,9 +710,12 @@
     const statFragSize = document.getElementById('stat-frag-size');
     const statErrors   = document.getElementById('stat-errors');
     const waveformIdle = document.getElementById('waveform-idle');
+    const nowPlaying   = document.getElementById('now-playing');
+    const npTitle      = document.getElementById('np-title');
+    const npArtist     = document.getElementById('np-artist');
 
     const params = new URLSearchParams(window.location.search);
-    srcInput.value = params.get('src') || 'http://localhost:38798/stream/lumisonic/stream.m3u8';
+    srcInput.value = params.get('src') || `http://${window.location.host}/stream/${stationSel.value}/stream.m3u8`;
 
     let fragCount = 0, errorCount = 0;
 
@@ -745,7 +801,34 @@
         });
     }
 
-    // ── Server stream control ──────────────────────────────────────────────────
+    // Update URL when station changes
+    stationSel.addEventListener('change', () => {
+        const brand = stationSel.value;
+        srcInput.value = `http://${window.location.host}/stream/${brand}/stream.m3u8`;
+    });
+
+    function updateNowPlaying(frag) {
+        // #EXTINF stores title as: duration,Title - Artist
+        const title = frag.title || '';
+        if (!title) return;
+        const dashIdx = title.indexOf(' - ');
+        if (dashIdx !== -1) {
+            const t = title.slice(0, dashIdx).trim();
+            const a = title.slice(dashIdx + 3).trim();
+            if (t === npTitle.textContent && a === npArtist.textContent) return;
+            gsap.to(nowPlaying, { opacity: 0, y: -4, duration: 0.15, onComplete: () => {
+                npTitle.textContent  = t || '—';
+                npArtist.textContent = a || '—';
+                nowPlaying.style.display = 'flex';
+                gsap.fromTo(nowPlaying, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.25 });
+            }});
+        } else {
+            npTitle.textContent  = title.trim() || '—';
+            npArtist.textContent = '—';
+            nowPlaying.style.display = 'flex';
+        }
+        log(`now playing: ${title}`, 'ok');
+    }
     async function serverAction(method) {
         const brand = stationSel.value;
         const action = method === 'POST' ? 'starting' : 'stopping';
@@ -779,6 +862,7 @@
         playPauseBtn.textContent = '▶';
         playPauseBtn.classList.remove('active');
         streamLabel.textContent = '—';
+        nowPlaying.style.display = 'none';
         log('stopped.', 'info');
     }
 
@@ -852,6 +936,7 @@
             log(`frag loaded [sn=${d.frag.sn}] ${kb} KB in ${ms}ms`, 'ok');
             animateNumber(statFrags, fragCount);
             statFragSize.textContent = kb + ' KB';
+            updateNowPlaying(d.frag);
         });
 
         function destroyHls(reason) {
