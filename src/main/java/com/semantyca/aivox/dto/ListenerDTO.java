@@ -3,7 +3,6 @@ package com.semantyca.aivox.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.semantyca.core.dto.AbstractReferenceDTO;
 import com.semantyca.core.model.cnst.LanguageCode;
-import jakarta.validation.constraints.Email;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +23,6 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ListenerDTO extends AbstractReferenceDTO {
     private long userId;
-    @Email
     private String email;
     private String slugName;
     @Builder.Default
