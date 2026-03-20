@@ -1,7 +1,9 @@
 package com.semantyca.aivox.streaming;
 
 import com.semantyca.aivox.config.HlsConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.service.playlist.PlaylistManager;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import com.semantyca.mixpla.model.stream.IStreamer;
 import io.smallrye.mutiny.subscription.Cancellable;
 import lombok.Getter;
@@ -12,11 +14,13 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,6 +32,7 @@ public class Streamer implements IStreamer {
 
     private final AtomicLong currentSequence = new AtomicLong(0);
     private final Matcher segmentMatcher = SEGMENT_PATTERN.matcher("");
+    private final AtomicReference<UUID> lastPublishedSongId = new AtomicReference<>();
 
     private final String brand;
     private final StreamState streamState = new StreamState();
@@ -37,17 +42,19 @@ public class Streamer implements IStreamer {
     private final HlsConfig hlsConfig;
     private final SegmentFeederTimer segmentFeederTimer;
     private final SliderTimer sliderTimer;
+    private final MetricPublisher metricPublisher;
 
     private Cancellable feederSubscription;
     private Cancellable sliderSubscription;
 
     public Streamer(String brand, PlaylistManager playlistManager, HlsConfig hlsConfig,
-                    SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer) {
+                    SegmentFeederTimer segmentFeederTimer, SliderTimer sliderTimer, MetricPublisher metricPublisher) {
         this.brand = brand;
         this.playlistManager = playlistManager;
         this.hlsConfig = hlsConfig;
         this.segmentFeederTimer = segmentFeederTimer;
         this.sliderTimer = sliderTimer;
+        this.metricPublisher = metricPublisher;
     }
 
 
@@ -168,6 +175,11 @@ public class Streamer implements IStreamer {
             if (bitrateSlot != null) {
                 long seq = bitrateSlot.values().iterator().next().getSequence();
                 streamState.liveSegments.put(seq, bitrateSlot);
+                
+                HlsSegment firstSegment = bitrateSlot.values().iterator().next();
+                if (firstSegment.isFirstSegmentOfFragment() && firstSegment.getSongMetadata() != null) {
+                    publishNowPlayingMetric(firstSegment.getSongMetadata());
+                }
             }
         }
 
@@ -281,6 +293,37 @@ public class Streamer implements IStreamer {
                 "#EXT-X-ALLOW-CACHE:NO\n" +
                 "#EXT-X-TARGETDURATION:" + hlsConfig.getSegmentDuration() + "\n" +
                 "#EXT-X-MEDIA-SEQUENCE:0\n";
+    }
+
+    private void publishNowPlayingMetric(SongMetadata metadata) {
+        UUID songId = metadata.getSongId();
+        if (songId == null) {
+            return;
+        }
+        
+        UUID lastSongId = lastPublishedSongId.get();
+        if (songId.equals(lastSongId)) {
+            return;
+        }
+        
+        if (lastPublishedSongId.compareAndSet(lastSongId, songId)) {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("songId", songId.toString());
+            payload.put("title", metadata.getTitle() != null ? metadata.getTitle() : "");
+            payload.put("artist", metadata.getArtist() != null ? metadata.getArtist() : "");
+            payload.put("album", metadata.getAlbum() != null ? metadata.getAlbum() : "");
+            payload.put("duration", metadata.getDuration());
+            if (metadata.getItemType() != null) {
+                payload.put("itemType", metadata.getItemType().toString());
+            }
+            
+            UUID traceId = metadata.getTraceId();
+            metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "now_playing", payload, traceId);
+            
+            LOGGER.infof("%s Now playing: %s - %s (songId: %s, traceId: %s)",
+                    logPrefix(), metadata.getArtist(), metadata.getTitle(), songId,
+                    traceId != null ? traceId : "none");
+        }
     }
 
     private String logPrefix() {

@@ -122,9 +122,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                             fragment2.setFileMetadataList(List.of(fileMetadata2));
                                                                                             fragment2.setType(PlaylistItemType.MIX_2_SONG);
 
-                                                                                            return playlistManager.addFragmentToQueue(fragment1, toQueueDTO.getPriority())
+                                                                                            return playlistManager.addFragmentToQueue(fragment1, toQueueDTO.getPriority(), toQueueDTO.getTraceId())
                                                                                                     .chain(() ->
-                                                                                                            playlistManager.addFragmentToQueue(fragment2, toQueueDTO.getPriority()));
+                                                                                                            playlistManager.addFragmentToQueue(fragment2, toQueueDTO.getPriority(), toQueueDTO.getTraceId()));
                                                                                         });
                                                                             });
                                                                 });
@@ -188,9 +188,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                                 fragment2.setType(PlaylistItemType.MIX_2_SONG);
 
 
-                                                                                                return playlistManager.addFragmentToQueue(fragment1, message.getPriority())
+                                                                                                return playlistManager.addFragmentToQueue(fragment1, message.getPriority(), message.getTraceId())
                                                                                                         .chain(() ->
-                                                                                                                playlistManager.addFragmentToQueue(fragment2, message.getPriority()));
+                                                                                                                playlistManager.addFragmentToQueue(fragment2, message.getPriority(), message.getTraceId()));
                                                                                             });
                                                                                 });
                                                                     });
@@ -223,7 +223,8 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
                                     return playlistManager.addFragmentToQueue(
                                             fragment,
-                                            toQueueDTO.getPriority()
+                                            toQueueDTO.getPriority(),
+                                            toQueueDTO.getTraceId()
                                     ).replaceWith(Boolean.TRUE);
                                 })));
     }
@@ -272,7 +273,8 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
                                                                                 return playlistManager.addFragmentToQueue(
                                                                                         crossfadeFragment,
-                                                                                        toQueueDTO.getPriority()
+                                                                                        toQueueDTO.getPriority(),
+                                                                                        toQueueDTO.getTraceId()
                                                                                 ).replaceWith(Boolean.TRUE);
                                                                             });
                                                                 }))))));
@@ -322,7 +324,8 @@ public class AudioMixingHandler extends MixingHandlerBase {
 
                                                                                 return playlistManager.addFragmentToQueue(
                                                                                         concatenatedFragment,
-                                                                                        toQueueDTO.getPriority()
+                                                                                        toQueueDTO.getPriority(),
+                                                                                        toQueueDTO.getTraceId()
                                                                                 ).replaceWith(Boolean.TRUE);
                                                                             });
                                                                 }))))));

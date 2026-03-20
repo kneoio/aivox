@@ -55,6 +55,11 @@ public class CommandService {
 
     public Uni<Map<String, Object>> stopStream(String brand) {
         return streamingService.stopStation(brand)
+                .call(bundle -> agentClient.sendJesoosCommand(brand, "stop")
+                        .invoke(() -> LOGGER.infof("Sent Jesoos stop command for brand: %s", brand))
+                        .onFailure().invoke(failure -> LOGGER.errorf(failure, "Failed to send Jesoos stop command for brand: %s", brand))
+                        .onFailure().recoverWithItem(() -> null)
+                )
                 .invoke(bundle -> {
                     publishStationMetric(brand, MetricEventType.INFORMATION, "stop_stream", Map.of(
                             "brand", brand,

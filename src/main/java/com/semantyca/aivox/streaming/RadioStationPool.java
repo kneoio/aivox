@@ -25,6 +25,7 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -85,9 +86,10 @@ public class RadioStationPool {
 
                     RadioStream radioStream = pool.computeIfAbsent(brandName, key -> {
                         LOGGER.infof("%s Creating new stream for brand", logPrefix(key));
-                        PlaylistManager playlistManager = new PlaylistManager(key, brand.getId(), aivoxConfig, vertx, waitingAudioProvider,
+                        PlaylistManager playlistManager = new PlaylistManager(key, brand.getId(), List.of(brand.getBitRate()),
+                                aivoxConfig, vertx, waitingAudioProvider,
                                 soundFragmentBrandService, fileHandler, segmentationService, metricPublisher);
-                        Streamer streamer = new Streamer(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer);
+                        Streamer streamer = new Streamer(key, playlistManager, hlsConfig, segmentFeederTimer, sliderTimer, metricPublisher);
                         streamer.initialize();
                         return new RadioStream(brand, streamer, playlistManager);
                     });

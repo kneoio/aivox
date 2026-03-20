@@ -64,9 +64,11 @@ public class PlaylistManager implements IPlaylistManager {
     private final Path tempDir;
     private final UUID brandId;
     private final String serviceId;
+    private final List<Long> bitRates;
 
     public PlaylistManager(String brand,
                            UUID brandId,
+                           List<Long> bitRates,
                            AivoxConfig aivoxConfig,
                            Vertx vertx,
                            WaitingAudioProvider waitingAudioProvider,
@@ -76,6 +78,7 @@ public class PlaylistManager implements IPlaylistManager {
                            MetricPublisher metricPublisher) {
         this.brand = brand;
         this.brandId = brandId;
+        this.bitRates = bitRates;
         this.vertx = vertx;
         this.waitingAudioProvider = waitingAudioProvider;
         this.soundFragmentBrandService = soundFragmentBrandService;
@@ -235,12 +238,17 @@ public class PlaylistManager implements IPlaylistManager {
     }
 
     public Uni<Boolean> addFragmentToQueue(SoundFragment soundFragment, int priority) {
+        return addFragmentToQueue(soundFragment, priority, null);
+    }
+
+    public Uni<Boolean> addFragmentToQueue(SoundFragment soundFragment, int priority, UUID traceId) {
         LiveSoundFragment liveSoundFragment = new LiveSoundFragment();
         SongMetadata songMetadata = new SongMetadata(
                 soundFragment.getId(),
                 soundFragment.getTitle(),
                 soundFragment.getArtist()
         );
+        songMetadata.setTraceId(traceId);
         liveSoundFragment.setSoundFragmentId(soundFragment.getId());
         liveSoundFragment.setMetadata(songMetadata);
 
@@ -280,8 +288,7 @@ public class PlaylistManager implements IPlaylistManager {
                                     LOGGER.errorf(e, "%s Materialization FAILED for %s", logPrefix(), fileMetadata.getFileOriginalName()))
                             .onItem().transformToUni(tempFile -> {
                                 //LOGGER.infof("%s Segmenting: %s", logPrefix(), songMetadata.getTitle());
-                                long[] bitrates = {128000L, 64000L};
-                                return segmentationService.slice(songMetadata, tempFile, List.of(bitrates[0], bitrates[1]))
+                                return segmentationService.slice(songMetadata, tempFile, bitRates)
                                         .ifNoItem().after(Duration.ofMinutes(3)).fail()
                                         .onFailure().invoke(e ->
                                                 LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))
@@ -322,8 +329,7 @@ public class PlaylistManager implements IPlaylistManager {
 
     private Uni<Boolean> processTempFile(Path tempPath, LiveSoundFragment liveSoundFragment, SongMetadata songMetadata, int priority) {
         LOGGER.infof("%s Segmenting temporary file: %s", logPrefix(), songMetadata.getTitle());
-        long[] bitrates = {128000L, 64000L};
-        return segmentationService.slice(songMetadata, tempPath, List.of(bitrates[0], bitrates[1]))
+        return segmentationService.slice(songMetadata, tempPath, bitRates)
                 .ifNoItem().after(Duration.ofMinutes(3)).fail()
                 .onFailure().invoke(e ->
                         LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))

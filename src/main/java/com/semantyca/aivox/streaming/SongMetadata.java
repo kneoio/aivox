@@ -14,6 +14,7 @@ public class SongMetadata {
     private int duration;  // seconds
     private String languageCode;
     private PlaylistItemType itemType;
+    private UUID traceId;
     
     public SongMetadata() {}
     

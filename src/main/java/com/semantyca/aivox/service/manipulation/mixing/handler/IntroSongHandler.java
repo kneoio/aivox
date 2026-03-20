@@ -105,7 +105,7 @@ public class IntroSongHandler {
                             })
                             .chain(updatedMetadata -> {
                                 updateRadioStationStatus(brand);
-                                return playlistManager.addFragmentToQueue(soundFragment, message.getPriority())
+                                return playlistManager.addFragmentToQueue(soundFragment, message.getPriority(), message.getTraceId())
                                         .onItem().invoke(result -> {
                                             if (result) {
                                                 LOGGER.info("Added merged song to queue: {}", soundFragment.getTitle());
@@ -118,7 +118,7 @@ public class IntroSongHandler {
     private Uni<Boolean> handleWithoutTtsFile(IStream stream, SongQueueMessageDTO message,
                                               SoundFragment soundFragment, PlaylistManager playlistManager) {
         updateRadioStationStatus(stream);
-        return playlistManager.addFragmentToQueue(soundFragment, message.getPriority())
+        return playlistManager.addFragmentToQueue(soundFragment, message.getPriority(), message.getTraceId())
                 .onItem().invoke(result -> {
                     if (result) {
                         LOGGER.info("Added song to queue: {}", soundFragment.getTitle());

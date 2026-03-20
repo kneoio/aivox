@@ -1,9 +1,11 @@
 package com.semantyca.aivox.service.maintenance;
 
 import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.model.stream.OneTimeStream;
 import com.semantyca.aivox.service.BrandService;
 import com.semantyca.aivox.streaming.RadioStationPool;
+import com.semantyca.mixpla.dto.queue.metric.MetricEventType;
 import com.semantyca.mixpla.model.cnst.StreamStatus;
 import com.semantyca.mixpla.model.stream.IStream;
 import io.quarkus.runtime.ShutdownEvent;
@@ -20,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -53,6 +56,9 @@ public class StationInactivityChecker {
 
     @Inject
     AivoxConfig aivoxConfig;
+
+    @Inject
+    MetricPublisher metricPublisher;
 
     private Cancellable cleanupSubscription;
     private final ConcurrentHashMap<String, Instant> stationsMarkedForRemoval = new ConcurrentHashMap<>();
@@ -104,6 +110,8 @@ public class StationInactivityChecker {
                     Instant markedTime = entry.getValue();
                     if (markedTime.isBefore(removalThreshold)) {
                         LOGGER.info("[{}] Removing station after {} minutes delay", slug, REMOVAL_DELAY_MINUTES);
+                        metricPublisher.publishMetric(slug, MetricEventType.WARNING, "station_removed",
+                                Map.of("reason", "inactivity", "offlineMinutes", REMOVAL_DELAY_MINUTES));
                         stationsMarkedForRemoval.remove(slug);
                         idleStatusTime.remove(slug);
                         stationStartTime.remove(slug);
@@ -131,6 +139,8 @@ public class StationInactivityChecker {
                                                 if (!isPastIdleThreshold && currentStatus != StreamStatus.OFF_LINE) {
                                                     if (currentStatus != StreamStatus.ON_LINE) {
                                                         radioStation.setStatus(StreamStatus.ON_LINE);
+                                                        metricPublisher.publishMetric(slug, MetricEventType.INFORMATION, "station_reactivated",
+                                                                Map.of("previousStatus", currentStatus.toString(), "newStatus", "ON_LINE"));
                                                         stationsMarkedForRemoval.remove(slug);
                                                         idleStatusTime.remove(slug);
                                                     }
@@ -143,17 +153,25 @@ public class StationInactivityChecker {
                                                 if (currentStatus == StreamStatus.IDLE) {
                                                     Instant idleStartTime = idleStatusTime.get(slug);
                                                     if (idleStartTime != null && idleStartTime.isBefore(idleToOfflineThreshold)) {
+                                                        long idleMinutes = Duration.between(idleStartTime, now).toMinutes();
                                                         radioStation.setStatus(StreamStatus.OFF_LINE);
+                                                        metricPublisher.publishMetric(slug, MetricEventType.WARNING, "station_offline",
+                                                                Map.of("reason", "idle_timeout", "idleMinutes", idleMinutes));
                                                         stationsMarkedForRemoval.put(slug, now);
                                                         idleStatusTime.remove(slug);
                                                         stationStartTime.remove(slug);
                                                     }
                                                 } else if (ACTIVE_STATUSES.contains(currentStatus)) {
                                                     if (isPastIdleThreshold) {
+                                                        long inactiveMinutes = Duration.between(lastAccessInstant, now).toMinutes();
                                                         radioStation.setStatus(StreamStatus.IDLE);
+                                                        metricPublisher.publishMetric(slug, MetricEventType.INFORMATION, "station_idle",
+                                                                Map.of("previousStatus", currentStatus.toString(), "inactiveMinutes", inactiveMinutes));
                                                         idleStatusTime.put(slug, now);
                                                     }
                                                 } else if (currentStatus == StreamStatus.FINISHED && radioStation instanceof OneTimeStream) {
+                                                    metricPublisher.publishMetric(slug, MetricEventType.INFORMATION, "onetime_stream_finished",
+                                                            Map.of("streamType", "OneTimeStream"));
                                                     stationsMarkedForRemoval.put(slug, now);
                                                     idleStatusTime.remove(slug);
                                                     stationStartTime.remove(slug);
@@ -165,13 +183,18 @@ public class StationInactivityChecker {
                                                 
                                                 if (ACTIVE_STATUSES.contains(currentStatus) && hasBeenRunning5Min) {
                                                     radioStation.setStatus(StreamStatus.IDLE);
+                                                    metricPublisher.publishMetric(slug, MetricEventType.INFORMATION, "station_idle",
+                                                            Map.of("previousStatus", currentStatus.toString(), "reason", "no_access_data"));
                                                     idleStatusTime.put(slug, now);
                                                 }
                                                 
                                                 if (currentStatus == StreamStatus.IDLE) {
                                                     Instant idleStartTime = idleStatusTime.get(slug);
                                                     if (idleStartTime != null && idleStartTime.isBefore(idleToOfflineThreshold)) {
+                                                        long idleMinutes = Duration.between(idleStartTime, now).toMinutes();
                                                         radioStation.setStatus(StreamStatus.OFF_LINE);
+                                                        metricPublisher.publishMetric(slug, MetricEventType.WARNING, "station_offline",
+                                                                Map.of("reason", "idle_timeout_no_access_data", "idleMinutes", idleMinutes));
                                                         stationsMarkedForRemoval.put(slug, now);
                                                         idleStatusTime.remove(slug);
                                                         stationStartTime.remove(slug);
