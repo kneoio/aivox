@@ -23,8 +23,8 @@ import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jboss.logging.Logger;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +35,7 @@ import static com.semantyca.mixpla.repository.MixplaNameResolver.AI_AGENT;
 
 @ApplicationScoped
 public class AiAgentRepository extends AsyncRepository {
-    private static final Logger LOGGER = LoggerFactory.getLogger(AiAgentRepository.class);
+    private static final Logger LOGGER = Logger.getLogger(AiAgentRepository.class);
     private static final EntityData entityData = MixplaNameResolver.create().getEntityNames(AI_AGENT);
 
     @Inject
@@ -105,7 +105,7 @@ public class AiAgentRepository extends AsyncRepository {
                                             return agent;
                                         }));
                     } else {
-                        LOGGER.warn("No {} found with id: {}, user: {} ", AI_AGENT, uuid, user.getId());
+                        LOGGER.warnf("No {} found with id: {}, user: {} ", AI_AGENT, uuid, user.getId());
                         throw new DocumentHasNotFoundException(uuid);
                     }
                 });

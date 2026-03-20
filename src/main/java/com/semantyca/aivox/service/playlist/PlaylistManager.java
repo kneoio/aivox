@@ -399,10 +399,6 @@ public class PlaylistManager implements IPlaylistManager {
         slicedFragmentsLock.writeLock().lock();
         try {
             playlistState.obtainedByHlsPlaylist.add(fragment);
-            playlistState.fragmentsForMp3.add(fragment);
-            while (playlistState.fragmentsForMp3.size() > 2) {
-                playlistState.fragmentsForMp3.removeFirst();
-            }
             LOGGER.debugf("%s Queued fragment: %s (processed: %d)",
                     logPrefix(), fragment.getMetadata(), playlistState.obtainedByHlsPlaylist.size());
             if (playlistState.obtainedByHlsPlaylist.size() > PROCESSED_QUEUE_MAX_SIZE) {
@@ -434,7 +430,6 @@ public class PlaylistManager implements IPlaylistManager {
         slicedFragmentsLock.writeLock().lock();
         try {
             playlistState.obtainedByHlsPlaylist.clear();
-            playlistState.fragmentsForMp3.clear();
         } finally {
             slicedFragmentsLock.writeLock().unlock();
         }

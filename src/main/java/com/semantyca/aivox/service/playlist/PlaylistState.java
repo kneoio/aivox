@@ -10,5 +10,4 @@ class PlaylistState {
     final LinkedList<LiveSoundFragment> obtainedByHlsPlaylist = new LinkedList<>();
     final ConcurrentLinkedQueue<LiveSoundFragment> regularQueue = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<LiveSoundFragment> prioritizedQueue = new ConcurrentLinkedQueue<>();
-    final LinkedList<LiveSoundFragment> fragmentsForMp3 = new LinkedList<>();
 }
