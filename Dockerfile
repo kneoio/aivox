@@ -1,6 +1,6 @@
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:21-jre
 RUN groupadd -r aivox && useradd -r -g aivox aivox
-RUN apt-get update && apt-get install -y libavdevice58 libavfilter7 libavformat58 libavcodec58 libswresample3 libswscale5 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libavdevice59 libavfilter8 libavformat59 libavcodec59 libswresample4 libswscale6 && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/segmented /app/merged /app/controller-uploads /app/external /app/file-uploads /var/log/aivox \
       && chown -R aivox:aivox /app /var/log/aivox
 WORKDIR /app
