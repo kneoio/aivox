@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre-bookworm
+FROM openjdk:21-slim
 RUN groupadd -r aivox && useradd -r -g aivox aivox
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/segmented /app/merged /app/controller-uploads /app/external /app/file-uploads /var/log/aivox \
