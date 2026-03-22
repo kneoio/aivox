@@ -137,7 +137,7 @@ public class PlaylistManager implements IPlaylistManager {
                                         .forEach(playlistState.regularQueue::offer);
                                 initialized = true;
                                 initializing = false;
-                                publishQueueMetricsSafe();
+                                publishQueueMetricsSafe(null);
                             })
                             .replaceWithVoid();
                 })
@@ -311,7 +311,7 @@ public class PlaylistManager implements IPlaylistManager {
                                                         logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                                         segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                                                 // TEMP METRIC - Remove after delay investigation
-                                                metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "song_added_to_regular_queue",
+                                                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "song_added_to_regular_queue",
                                                         Map.of("songId", songMetadata.getSongId().toString(),
                                                                 "title", songMetadata.getTitle(),
                                                                 "artist", songMetadata.getArtist(),
@@ -324,7 +324,7 @@ public class PlaylistManager implements IPlaylistManager {
                                                         logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                                         segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                                                 // TEMP METRIC - Remove after delay investigation
-                                                metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "song_added_to_prioritized_queue",
+                                                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "song_added_to_prioritized_queue",
                                                         Map.of("songId", songMetadata.getSongId().toString(),
                                                                 "title", songMetadata.getTitle(),
                                                                 "artist", songMetadata.getArtist(),
@@ -332,7 +332,7 @@ public class PlaylistManager implements IPlaylistManager {
                                                                 "timestamp", System.currentTimeMillis()),
                                                         traceId);
                                             }
-                                            publishQueueMetricsSafe();
+                                            publishQueueMetricsSafe(traceId);
                                             return Uni.createFrom().item(true);
                                         });
                             })
@@ -361,7 +361,7 @@ public class PlaylistManager implements IPlaylistManager {
                                 logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                 segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                         // TEMP METRIC - Remove after delay investigation
-                        metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "song_added_to_regular_queue",
+                        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "song_added_to_regular_queue",
                                 Map.of("songId", songMetadata.getSongId().toString(),
                                         "title", songMetadata.getTitle(),
                                         "artist", songMetadata.getArtist(),
@@ -374,7 +374,7 @@ public class PlaylistManager implements IPlaylistManager {
                                 logPrefix(), songMetadata.getTitle(), songMetadata.getArtist(),
                                 segments.values().stream().findFirst().map(ConcurrentLinkedQueue::size).orElse(0));
                         // TEMP METRIC - Remove after delay investigation
-                        metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "song_added_to_prioritized_queue",
+                        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "song_added_to_prioritized_queue",
                                 Map.of("songId", songMetadata.getSongId().toString(),
                                         "title", songMetadata.getTitle(),
                                         "artist", songMetadata.getArtist(),
@@ -382,7 +382,7 @@ public class PlaylistManager implements IPlaylistManager {
                                         "timestamp", System.currentTimeMillis()),
                                 songMetadata.getTraceId());
                     }
-                    publishQueueMetricsSafe();
+                    publishQueueMetricsSafe(songMetadata.getTraceId());
                     return Uni.createFrom().item(true);
                 });
     }
@@ -401,7 +401,7 @@ public class PlaylistManager implements IPlaylistManager {
             LiveSoundFragment next = playlistState.prioritizedQueue.poll();
             // TEMP METRIC - Remove after delay investigation
             if (next != null && next.getMetadata() != null) {
-                metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_polled_from_queue",
+                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "fragment_polled_from_queue",
                         Map.of("songId", next.getMetadata().getSongId().toString(),
                                 "title", next.getMetadata().getTitle(),
                                 "artist", next.getMetadata().getArtist(),
@@ -410,7 +410,7 @@ public class PlaylistManager implements IPlaylistManager {
                                 "timestamp", System.currentTimeMillis()),
                         next.getMetadata().getTraceId());
             }
-            publishQueueMetricsSafe();
+            publishQueueMetricsSafe(next != null && next.getMetadata() != null ? next.getMetadata().getTraceId() : null);
             moveFragmentToProcessedList(next);
             return next;
         }
@@ -419,7 +419,7 @@ public class PlaylistManager implements IPlaylistManager {
             LiveSoundFragment next = playlistState.regularQueue.poll();
             // TEMP METRIC - Remove after delay investigation
             if (next != null && next.getMetadata() != null) {
-                metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_polled_from_queue",
+                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "fragment_polled_from_queue",
                         Map.of("songId", next.getMetadata().getSongId().toString(),
                                 "title", next.getMetadata().getTitle(),
                                 "artist", next.getMetadata().getArtist(),
@@ -428,14 +428,14 @@ public class PlaylistManager implements IPlaylistManager {
                                 "timestamp", System.currentTimeMillis()),
                         next.getMetadata().getTraceId());
             }
-            publishQueueMetricsSafe();
+            publishQueueMetricsSafe(next != null && next.getMetadata() != null ? next.getMetadata().getTraceId() : null);
             moveFragmentToProcessedList(next);
             return next;
         }
 
         LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
         // TEMP METRIC - Remove after delay investigation
-        metricPublisher.publishMetric(brand, MetricEventType.WARNING, "waiting_melody_returned",
+        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "waiting_melody_returned",
                 Map.of("prioritizedQueueSize", playlistState.prioritizedQueue.size(),
                         "regularQueueSize", playlistState.regularQueue.size(),
                         "timestamp", System.currentTimeMillis()));
@@ -494,19 +494,19 @@ public class PlaylistManager implements IPlaylistManager {
         }
         playlistState.regularQueue.clear();
         playlistState.prioritizedQueue.clear();
-        publishQueueMetricsSafe();
+        publishQueueMetricsSafe(null);
         LOGGER.infof("%s Shutdown complete.", logPrefix());
     }
 
-    private void publishQueueMetricsSafe() {
+    private void publishQueueMetricsSafe(UUID traceId) {
         try {
-            publishQueueMetrics();
+            publishQueueMetrics(traceId);
         } catch (Exception e) {
             LOGGER.errorf(e, "%s Error publishing queue metrics", logPrefix());
         }
     }
 
-    private void publishQueueMetrics() {
+    private void publishQueueMetrics(UUID traceId) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("brandId", brandId.toString());
         payload.put("regularQueueSongs", getUniqueSongMetadata(playlistState.regularQueue));
@@ -516,7 +516,7 @@ public class PlaylistManager implements IPlaylistManager {
                 serviceId,
                 brand,
                 MetricEventType.INFORMATION,
-                UUID.randomUUID(),
+                traceId != null ? traceId : UUID.randomUUID(),
                 "queue_updated",
                 payload
         );

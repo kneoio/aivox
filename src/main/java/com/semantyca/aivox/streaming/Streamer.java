@@ -179,7 +179,7 @@ public class Streamer implements IStreamer {
                 HlsSegment firstSegment = bitrateSlot.values().iterator().next();
                 // TEMP METRIC - Remove after delay investigation
                 if (firstSegment.getSongMetadata() != null) {
-                    metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "segment_moved_to_live",
+                    metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segment_moved_to_live",
                             Map.of("sequence", seq,
                                     "songId", firstSegment.getSongMetadata().getSongId().toString(),
                                     "title", firstSegment.getSongMetadata().getTitle(),
@@ -202,7 +202,7 @@ public class Streamer implements IStreamer {
                 if (fragment != null) {
                     // TEMP METRIC - Remove after delay investigation
                     if (fragment.getMetadata() != null) {
-                        metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_received_by_streamer",
+                        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "fragment_received_by_streamer",
                                 Map.of("fragmentId", fragment.getSoundFragmentId().toString(),
                                         "title", fragment.getMetadata().getTitle(),
                                         "artist", fragment.getMetadata().getArtist(),
@@ -234,7 +234,7 @@ public class Streamer implements IStreamer {
 
         // TEMP METRIC - Remove after delay investigation
         if (fragment.getMetadata() != null) {
-            metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_added_to_pending",
+            metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "fragment_added_to_pending",
                     Map.of("fragmentId", fragment.getSoundFragmentId().toString(),
                             "title", fragment.getMetadata().getTitle(),
                             "artist", fragment.getMetadata().getArtist(),
