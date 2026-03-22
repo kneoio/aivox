@@ -180,6 +180,17 @@ public class Streamer implements IStreamer {
                 if (firstSegment.isFirstSegmentOfFragment() && firstSegment.getSongMetadata() != null) {
                     publishNowPlayingMetric(firstSegment.getSongMetadata());
                 }
+                
+                // TEMP METRIC - Track when song finishes
+                if (firstSegment.isLastSegmentOfFragment() && firstSegment.getSongMetadata() != null) {
+                    metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "song_finished",
+                            Map.of("songId", firstSegment.getSongMetadata().getSongId().toString(),
+                                    "title", firstSegment.getSongMetadata().getTitle(),
+                                    "artist", firstSegment.getSongMetadata().getArtist(),
+                                    "sequence", seq,
+                                    "timestamp", System.currentTimeMillis()),
+                            firstSegment.getSongMetadata().getTraceId());
+                }
             }
         }
 
@@ -237,6 +248,7 @@ public class Streamer implements IStreamer {
         for (int i = 0; i < segmentCount; i++) {
             long globalSeq = currentSequence.getAndIncrement();
             Map<Long, HlsSegment> bitrateSlot = new HashMap<>();
+            boolean isLastSegment = (i == segmentCount - 1);
 
             for (Map.Entry<Long, ConcurrentLinkedQueue<HlsSegment>> entry : segments.entrySet()) {
                 Long bitrate = entry.getKey();
@@ -245,6 +257,9 @@ public class Streamer implements IStreamer {
                 HlsSegment segment = queue.poll();
                 if (segment != null) {
                     segment.setSequence(globalSeq);
+                    if (isLastSegment) {
+                        segment.setLastSegmentOfFragment(true);
+                    }
                     bitrateSlot.put(bitrate, segment);
                 }
             }

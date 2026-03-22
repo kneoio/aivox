@@ -10,6 +10,7 @@ public class HlsSegment {
     private long bitrate;
     private SongMetadata songMetadata;
     private boolean firstSegmentOfFragment;
+    private boolean lastSegmentOfFragment;
     
     public HlsSegment() {}
     
@@ -21,5 +22,6 @@ public class HlsSegment {
         this.bitrate = bitrate;
         this.songMetadata = songMetadata;
         this.firstSegmentOfFragment = firstSegmentOfFragment;
+        this.lastSegmentOfFragment = false;
     }
 }
