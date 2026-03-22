@@ -133,10 +133,6 @@ public class RadioStationPool {
         }
     }
 
-    private String logPrefix() {
-        return "[RadioStationPool]";
-    }
-
     private String logPrefix(String brand) {
         return "[" + brand + "]";
     }
@@ -149,7 +145,7 @@ public class RadioStationPool {
         Map<String, Object> payload = Map.of(
                 "brand", brandName,
                 "active", stream.isActive(),
-                "createdAt", stream.getCreatedAt() != null ? stream.getCreatedAt().toString() : null,
+                "createdAt", stream.getCreatedAt(),
                 "source", "radio_station_pool"
         );
 
@@ -157,7 +153,7 @@ public class RadioStationPool {
             MetricEventDTO event = MetricEventDTO.of(
                     EnvConst.APP_ID,
                     brandName,
-                    MetricEventType.INFORMATION,
+                    MetricEventType.IMPORTANT_INFORMATION,
                     UUID.randomUUID(),
                     "radio_stream_initialized",
                     payload

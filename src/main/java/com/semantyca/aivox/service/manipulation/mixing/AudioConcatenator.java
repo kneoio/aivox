@@ -1,6 +1,7 @@
 package com.semantyca.aivox.service.manipulation.mixing;
 
 import com.semantyca.aivox.config.AivoxConfig;
+import com.semantyca.aivox.messaging.MetricPublisher;
 import com.semantyca.aivox.service.manipulation.FFmpegProvider;
 import com.semantyca.mixpla.model.cnst.ConcatenationType;
 import com.semantyca.mixpla.service.exceptions.AudioMergeException;
@@ -19,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 
 @ApplicationScoped
 public class AudioConcatenator {
@@ -28,6 +30,8 @@ public class AudioConcatenator {
     private final FFmpegExecutor executor;
     private final FFprobe ffprobe;
     private final String outputDir;
+    
+
 
     @Inject
     public AudioConcatenator(AivoxConfig config, FFmpegProvider ffmpeg) throws AudioMergeException {
@@ -64,10 +68,12 @@ public class AudioConcatenator {
     }
 
     public Uni<String> concatenate(String firstPath, String secondPath, String outputPath,
-                                   ConcatenationType mixingType, double mixParam) {
+                                   ConcatenationType mixingType, double mixParam, String brand, UUID traceId) {
         return Uni.createFrom().item(() -> {
             try {
                 LOGGER.info("Concatenating with mixing type: {}, param: {}", mixingType, mixParam);
+                
+
 
                 return switch (mixingType) {
                     case DIRECT_CONCAT -> directConcatenation(firstPath, secondPath, outputPath, mixParam);

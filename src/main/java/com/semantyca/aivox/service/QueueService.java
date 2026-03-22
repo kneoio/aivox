@@ -68,7 +68,8 @@ public class QueueService {
                                     soundFragmentRepository,
                                     soundFragmentService,
                                     aiAgentService,
-                                    fFmpegProvider
+                                    fFmpegProvider,
+                                    metricPublisher
                             );
                             LOGGER.debug("[QueueService] IntroSongHandler created, calling handle method");
                             return handler.handle(radioStation, message);

@@ -282,16 +282,127 @@ public class PlaylistManager implements IPlaylistManager {
                         return Uni.createFrom().item(false);
                     }
                     LOGGER.infof("%s Materializing: %s", logPrefix(), fileMetadata.getFileOriginalName());
+                    
+                    // TEMP METRIC - Track file download timing
+                    long downloadStartTime = System.currentTimeMillis();
+                    metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "file_download_started",
+                            Map.of("songId", songMetadata.getSongId().toString(),
+                                    "title", songMetadata.getTitle(),
+                                    "artist", songMetadata.getArtist(),
+                                    "fileName", fileMetadata.getFileOriginalName(),
+                                    "timestamp", downloadStartTime),
+                            traceId);
+                    
                     return fileMetadata.materializeFileStream(tempDir.toString())
                             .ifNoItem().after(Duration.ofMinutes(5)).fail()
-                            .onFailure().invoke(e ->
-                                    LOGGER.errorf(e, "%s Materialization FAILED for %s", logPrefix(), fileMetadata.getFileOriginalName()))
+                            .onFailure().invoke(e -> {
+                                LOGGER.errorf(e, "%s Materialization FAILED for %s", logPrefix(), fileMetadata.getFileOriginalName());
+                                
+                                // TEMP METRIC - Track download failure
+                                long downloadEndTime = System.currentTimeMillis();
+                                long downloadDuration = downloadEndTime - downloadStartTime;
+                                boolean isTimeout = e instanceof java.util.concurrent.TimeoutException || 
+                                                   e.getMessage() != null && e.getMessage().contains("timeout");
+                                
+                                metricPublisher.publishMetric(brand, MetricEventType.ERROR, "file_download_failed",
+                                        Map.of("songId", songMetadata.getSongId().toString(),
+                                                "title", songMetadata.getTitle(),
+                                                "artist", songMetadata.getArtist(),
+                                                "fileName", fileMetadata.getFileOriginalName(),
+                                                "downloadDurationMs", downloadDuration,
+                                                "downloadDurationSec", downloadDuration / 1000,
+                                                "isTimeout", isTimeout,
+                                                "errorMessage", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
+                                                "timestamp", downloadEndTime),
+                                        traceId);
+                            })
+                            .onItem().invoke(tempFile -> {
+                                // TEMP METRIC - Track download completion and duration
+                                long downloadEndTime = System.currentTimeMillis();
+                                long downloadDuration = downloadEndTime - downloadStartTime;
+                                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "file_download_completed",
+                                        Map.of("songId", songMetadata.getSongId().toString(),
+                                                "title", songMetadata.getTitle(),
+                                                "artist", songMetadata.getArtist(),
+                                                "fileName", fileMetadata.getFileOriginalName(),
+                                                "downloadDurationMs", downloadDuration,
+                                                "downloadDurationSec", downloadDuration / 1000,
+                                                "timestamp", downloadEndTime),
+                                        traceId);
+                                
+                                // Publish WARNING if download took longer than 30 seconds
+                                if (downloadDuration > 30000) {
+                                    metricPublisher.publishMetric(brand, MetricEventType.WARNING, "file_download_slow",
+                                            Map.of("songId", songMetadata.getSongId().toString(),
+                                                    "title", songMetadata.getTitle(),
+                                                    "artist", songMetadata.getArtist(),
+                                                    "fileName", fileMetadata.getFileOriginalName(),
+                                                    "downloadDurationMs", downloadDuration,
+                                                    "downloadDurationSec", downloadDuration / 1000,
+                                                    "threshold", "30 seconds"),
+                                            traceId);
+                                }
+                            })
                             .onItem().transformToUni(tempFile -> {
                                 //LOGGER.infof("%s Segmenting: %s", logPrefix(), songMetadata.getTitle());
+                                
+                                // TEMP METRIC - Track segmentation timing
+                                long segmentationStartTime = System.currentTimeMillis();
+                                metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segmentation_started",
+                                        Map.of("songId", songMetadata.getSongId().toString(),
+                                                "title", songMetadata.getTitle(),
+                                                "artist", songMetadata.getArtist(),
+                                                "timestamp", segmentationStartTime),
+                                        traceId);
+                                
                                 return segmentationService.slice(songMetadata, tempFile, bitRates)
                                         .ifNoItem().after(Duration.ofMinutes(3)).fail()
-                                        .onFailure().invoke(e ->
-                                                LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))
+                                        .onFailure().invoke(e -> {
+                                            LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle());
+                                            
+                                            // TEMP METRIC - Track segmentation failure
+                                            long segmentationEndTime = System.currentTimeMillis();
+                                            long segmentationDuration = segmentationEndTime - segmentationStartTime;
+                                            boolean isTimeout = e instanceof java.util.concurrent.TimeoutException || 
+                                                               e.getMessage() != null && e.getMessage().contains("timeout");
+                                            
+                                            metricPublisher.publishMetric(brand, MetricEventType.ERROR, "segmentation_failed",
+                                                    Map.of("songId", songMetadata.getSongId().toString(),
+                                                            "title", songMetadata.getTitle(),
+                                                            "artist", songMetadata.getArtist(),
+                                                            "segmentationDurationMs", segmentationDuration,
+                                                            "segmentationDurationSec", segmentationDuration / 1000,
+                                                            "isTimeout", isTimeout,
+                                                            "errorMessage", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
+                                                            "timestamp", segmentationEndTime),
+                                                    traceId);
+                                        })
+                                        .onItem().invoke(segments -> {
+                                            // TEMP METRIC - Track segmentation completion and duration
+                                            long segmentationEndTime = System.currentTimeMillis();
+                                            long segmentationDuration = segmentationEndTime - segmentationStartTime;
+                                            metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segmentation_completed",
+                                                    Map.of("songId", songMetadata.getSongId().toString(),
+                                                            "title", songMetadata.getTitle(),
+                                                            "artist", songMetadata.getArtist(),
+                                                            "segmentationDurationMs", segmentationDuration,
+                                                            "segmentationDurationSec", segmentationDuration / 1000,
+                                                            "segmentCount", segments.isEmpty() ? 0 : segments.values().iterator().next().size(),
+                                                            "timestamp", segmentationEndTime),
+                                                    traceId);
+                                            
+                                            // Publish WARNING if segmentation took longer than 20 seconds
+                                            if (segmentationDuration > 20000) {
+                                                metricPublisher.publishMetric(brand, MetricEventType.WARNING, "segmentation_slow",
+                                                        Map.of("songId", songMetadata.getSongId().toString(),
+                                                                "title", songMetadata.getTitle(),
+                                                                "artist", songMetadata.getArtist(),
+                                                                "segmentationDurationMs", segmentationDuration,
+                                                                "segmentationDurationSec", segmentationDuration / 1000,
+                                                                "threshold", "20 seconds"),
+                                                        traceId);
+                                            }
+                                        })
                                         .onItem().invoke(segments -> {
                                             try {
                                                 Files.deleteIfExists(tempFile);
@@ -345,10 +456,68 @@ public class PlaylistManager implements IPlaylistManager {
 
     private Uni<Boolean> processTempFile(Path tempPath, LiveSoundFragment liveSoundFragment, SongMetadata songMetadata, int priority) {
         LOGGER.infof("%s Segmenting temporary file: %s", logPrefix(), songMetadata.getTitle());
+        
+        // TEMP METRIC - Track segmentation timing for pre-mixed files
+        long segmentationStartTime = System.currentTimeMillis();
+        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segmentation_started",
+                Map.of("songId", songMetadata.getSongId().toString(),
+                        "title", songMetadata.getTitle(),
+                        "artist", songMetadata.getArtist(),
+                        "source", "pre_mixed_file",
+                        "timestamp", segmentationStartTime),
+                songMetadata.getTraceId());
+        
         return segmentationService.slice(songMetadata, tempPath, bitRates)
                 .ifNoItem().after(Duration.ofMinutes(3)).fail()
-                .onFailure().invoke(e ->
-                        LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle()))
+                .onFailure().invoke(e -> {
+                    LOGGER.errorf(e, "%s Segmentation FAILED for %s", logPrefix(), songMetadata.getTitle());
+                    
+                    // TEMP METRIC - Track segmentation failure
+                    long segmentationEndTime = System.currentTimeMillis();
+                    long segmentationDuration = segmentationEndTime - segmentationStartTime;
+                    boolean isTimeout = e instanceof java.util.concurrent.TimeoutException || 
+                                       e.getMessage() != null && e.getMessage().contains("timeout");
+                    
+                    metricPublisher.publishMetric(brand, MetricEventType.ERROR, "segmentation_failed",
+                            Map.of("songId", songMetadata.getSongId().toString(),
+                                    "title", songMetadata.getTitle(),
+                                    "artist", songMetadata.getArtist(),
+                                    "source", "pre_mixed_file",
+                                    "segmentationDurationMs", segmentationDuration,
+                                    "segmentationDurationSec", segmentationDuration / 1000,
+                                    "isTimeout", isTimeout,
+                                    "errorMessage", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
+                                    "timestamp", segmentationEndTime),
+                            songMetadata.getTraceId());
+                })
+                .onItem().invoke(segments -> {
+                    // TEMP METRIC - Track segmentation completion and duration
+                    long segmentationEndTime = System.currentTimeMillis();
+                    long segmentationDuration = segmentationEndTime - segmentationStartTime;
+                    metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segmentation_completed",
+                            Map.of("songId", songMetadata.getSongId().toString(),
+                                    "title", songMetadata.getTitle(),
+                                    "artist", songMetadata.getArtist(),
+                                    "source", "pre_mixed_file",
+                                    "segmentationDurationMs", segmentationDuration,
+                                    "segmentationDurationSec", segmentationDuration / 1000,
+                                    "segmentCount", segments.isEmpty() ? 0 : segments.values().iterator().next().size(),
+                                    "timestamp", segmentationEndTime),
+                            songMetadata.getTraceId());
+                    
+                    // Publish WARNING if segmentation took longer than 20 seconds
+                    if (segmentationDuration > 20000) {
+                        metricPublisher.publishMetric(brand, MetricEventType.WARNING, "segmentation_slow",
+                                Map.of("songId", songMetadata.getSongId().toString(),
+                                        "title", songMetadata.getTitle(),
+                                        "artist", songMetadata.getArtist(),
+                                        "source", "pre_mixed_file",
+                                        "segmentationDurationMs", segmentationDuration,
+                                        "segmentationDurationSec", segmentationDuration / 1000,
+                                        "threshold", "20 seconds"),
+                                songMetadata.getTraceId());
+                    }
+                })
                 .onItem().transformToUni(segments -> {
                     if (segments.isEmpty()) {
                         LOGGER.warnf("%s No segments for fragment: %s", logPrefix(), songMetadata.getSongId());
@@ -435,10 +604,10 @@ public class PlaylistManager implements IPlaylistManager {
 
         LOGGER.warnf("%s Queues empty, triggering starving feed", logPrefix());
         // TEMP METRIC - Remove after delay investigation
-        metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "waiting_melody_returned",
+        /*metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "waiting_melody_returned",
                 Map.of("prioritizedQueueSize", playlistState.prioritizedQueue.size(),
                         "regularQueueSize", playlistState.regularQueue.size(),
-                        "timestamp", System.currentTimeMillis()));
+                        "timestamp", System.currentTimeMillis()));*/
         // Dispatch onto Vert.x event loop — never block or subscribe from caller thread
      /*   vertx.runOnContext(() -> feedFragments(1, true)
                 .subscribe().with(

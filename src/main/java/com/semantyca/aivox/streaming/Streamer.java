@@ -177,18 +177,6 @@ public class Streamer implements IStreamer {
                 streamState.liveSegments.put(seq, bitrateSlot);
                 
                 HlsSegment firstSegment = bitrateSlot.values().iterator().next();
-                // TEMP METRIC - Remove after delay investigation
-                if (firstSegment.getSongMetadata() != null) {
-                    metricPublisher.publishMetric(brand, MetricEventType.DEBUG, "segment_moved_to_live",
-                            Map.of("sequence", seq,
-                                    "songId", firstSegment.getSongMetadata().getSongId().toString(),
-                                    "title", firstSegment.getSongMetadata().getTitle(),
-                                    "artist", firstSegment.getSongMetadata().getArtist(),
-                                    "isFirstSegment", firstSegment.isFirstSegmentOfFragment(),
-                                    "liveSegmentsSize", streamState.liveSegments.size(),
-                                    "timestamp", System.currentTimeMillis()),
-                            firstSegment.getSongMetadata().getTraceId());
-                }
                 if (firstSegment.isFirstSegmentOfFragment() && firstSegment.getSongMetadata() != null) {
                     publishNowPlayingMetric(firstSegment.getSongMetadata());
                 }
@@ -353,7 +341,13 @@ public class Streamer implements IStreamer {
             }
             
             UUID traceId = metadata.getTraceId();
-            metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "now_playing", payload, traceId);
+            
+            // Detect waiting melody vs regular song
+            boolean isWaitingMelody = "Waiting...".equals(metadata.getTitle()) && "Station".equals(metadata.getArtist());
+            String eventCode = isWaitingMelody ? "waiting_melody_started" : "now_playing";
+            MetricEventType eventType = isWaitingMelody ? MetricEventType.DEBUG : MetricEventType.INFORMATION;
+            
+            metricPublisher.publishMetric(brand, eventType, eventCode, payload, traceId);
             
             LOGGER.infof("%s Now playing: %s - %s (songId: %s, traceId: %s)",
                     logPrefix(), metadata.getArtist(), metadata.getTitle(), songId,

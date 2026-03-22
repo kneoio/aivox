@@ -69,25 +69,6 @@ public class SoundFragmentRepository extends SoundFragmentRepositoryAbstract {
                 .collect().asList();
     }
 
-    public Uni<Integer> getAllCount(IUser user, SoundFragmentFilter filter) {
-        String sql = "SELECT COUNT(*) FROM " + entityData.getTableName() + " t, " + entityData.getRlsName() + " rls " +
-                "WHERE t.id = rls.entity_id AND rls.reader = " + user.getId() + " AND t.archived = 0";
-
-        if (filter != null && filter.isActivated()) {
-            assert queryBuilder != null;
-            sql += queryBuilder.buildFilterConditions(filter);
-        }
-
-        if (filter != null && filter.getSearchTerm() != null && !filter.getSearchTerm().trim().isEmpty()) {
-            return client.preparedQuery(sql)
-                    .execute(Tuple.of(filter.getSearchTerm()))
-                    .onItem().transform(rows -> rows.iterator().next().getInteger(0));
-        }
-
-        return client.query(sql)
-                .execute()
-                .onItem().transform(rows -> rows.iterator().next().getInteger(0));
-    }
 
     public Uni<SoundFragment> findById(UUID uuid, Long userID, boolean includeArchived, boolean includeGenres, boolean includeFiles) {
         String sql = "SELECT theTable.*, rls.*" +
@@ -110,55 +91,9 @@ public class SoundFragmentRepository extends SoundFragmentRepositoryAbstract {
                 });
     }
 
-    public Uni<SoundFragment> findById(UUID uuid, Long userID, boolean includeGenres, boolean includeFiles) {
-        String sql = "SELECT theTable.*, rls.*" +
-                String.format(" FROM %s theTable JOIN %s rls ON theTable.id = rls.entity_id ", entityData.getTableName(), entityData.getRlsName()) +
-                "WHERE rls.reader = $1 AND theTable.id = $2 AND theTable.archived = 0";
-
-        return client.preparedQuery(sql)
-                .execute(Tuple.of(userID, uuid))
-                .onItem().transform(RowSet::iterator)
-                .onItem().transformToUni(iterator -> {
-                    if (iterator.hasNext()) {
-                        Row row = iterator.next();
-                        return from(row, includeGenres, includeFiles, true);
-                    } else {
-                        return Uni.createFrom().failure(new DocumentHasNotFoundException(uuid));
-                    }
-                });
-    }
-
-    public Uni<SoundFragment> findById(UUID uuid) {
-        String sql = "SELECT * FROM " + entityData.getTableName() + " WHERE id = $1";
-
-        return client.preparedQuery(sql)
-                .execute(Tuple.of(uuid))
-                .onItem().transform(RowSet::iterator)
-                .onItem().transformToUni(iterator -> {
-                    if (iterator.hasNext()) {
-                        Row row = iterator.next();
-                        return from(row, false, false, false);
-                    } else {
-                        return Uni.createFrom().failure(new DocumentHasNotFoundException(uuid));
-                    }
-                });
-    }
-
 
     public Uni<FileMetadata> getFirstFile(UUID id) {
         assert fileHandler != null;
         return fileHandler.getFirstFile(id);
-    }
-
-
-    public Uni<List<BrandSoundFragment>> getForBrandBySimilarity(UUID brandId, String keyword, final int limit, final int offset,
-                                                                 boolean includeArchived, IUser user) {
-        SoundFragmentBrandRepository brandRepository = new SoundFragmentBrandRepository(client, mapper, rlsRepository);
-        return brandRepository.findForBrandBySimilarity(brandId, keyword, limit, offset, includeArchived, user);
-    }
-
-    public Uni<List<SoundFragment>> findByTypeAndBrand(PlaylistItemType type, UUID brandId, int limit, int offset) {
-        SoundFragmentBrandRepository brandRepository = new SoundFragmentBrandRepository(client, mapper, rlsRepository);
-        return brandRepository.getBrandSongs(brandId, type, limit, offset);
     }
 }

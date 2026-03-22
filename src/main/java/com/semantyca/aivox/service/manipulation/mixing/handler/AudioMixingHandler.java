@@ -159,7 +159,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                 part1,                     // intro1
                                                                 tempPath1.toString(),      // song
                                                                 part2,                     // intro2
-                                                                tempMixPath                // output
+                                                                tempMixPath,               // output
+                                                                message.getBrandSlug(),
+                                                                message.getTraceId()
                                                         ).chain(actualTempMixPath -> {
                                                             return soundFragmentService.getById(songInfo2.getSongId())
                                                                     .chain(soundFragment2 -> {
@@ -251,7 +253,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                     tempPath2.toString(),
                                                                                     outputPath,
                                                                                     concatType,
-                                                                                    0
+                                                                                    0,
+                                                                                    toQueueDTO.getBrandSlug(),
+                                                                                    toQueueDTO.getTraceId()
                                                                             )
                                                                             .chain(finalPath -> {
                                                                                 SoundFragment crossfadeFragment = new SoundFragment();
@@ -302,7 +306,9 @@ public class AudioMixingHandler extends MixingHandlerBase {
                                                                                     tempPath2.toString(),
                                                                                     outputPath,
                                                                                     ConcatenationType.DIRECT_CONCAT,
-                                                                                    0
+                                                                                    0,
+                                                                                    toQueueDTO.getBrandSlug(),
+                                                                                    toQueueDTO.getTraceId()
                                                                             )
                                                                             .chain(finalPath -> {
                                                                                 SoundFragment concatenatedFragment = new SoundFragment();
@@ -487,11 +493,11 @@ public class AudioMixingHandler extends MixingHandlerBase {
         );
     }
 
-    private Uni<String> mixIntroSongPlusIntro(String intro1, String song, String intro2, String outputFile) {
+    private Uni<String> mixIntroSongPlusIntro(String intro1, String song, String intro2, String outputFile, String brand, UUID traceId) {
         String firstConcat = outputDir + "/temp_intro_song_" + System.currentTimeMillis() + ".wav";
 
         return audioConcatenator.concatenate(intro1, song, firstConcat,
-                        ConcatenationType.DIRECT_CONCAT, 1.0)
+                        ConcatenationType.DIRECT_CONCAT, 1.0, brand, traceId)
                 .chain(temp -> mixSongPlusIntro(temp, intro2, outputFile,
                         2.0, false, -3, 0.2));
     }

@@ -61,7 +61,7 @@ public class CommandService {
                         .onFailure().recoverWithItem(() -> null)
                 )
                 .invoke(bundle -> {
-                    publishStationMetric(brand, MetricEventType.INFORMATION, "stop_stream", Map.of(
+                    publishStationMetric(brand, MetricEventType.IMPORTANT_INFORMATION, "stop_stream", Map.of(
                             "brand", brand,
                             "status", "stopped",
                             "source", "debug_api"
