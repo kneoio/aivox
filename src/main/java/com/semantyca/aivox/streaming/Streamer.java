@@ -28,7 +28,7 @@ public class Streamer implements IStreamer {
     private static final ZoneId ZONE_ID = ZoneId.of("Europe/Lisbon");
     private static final Logger LOGGER = Logger.getLogger(Streamer.class);
     private static final Pattern SEGMENT_PATTERN = Pattern.compile("([^_]+)_([0-9]+)_([0-9]+)\\.ts$");
-    private static final int PENDING_QUEUE_REFILL_THRESHOLD = 10;
+    private static final int PENDING_QUEUE_REFILL_THRESHOLD = 5;
 
     private final AtomicLong currentSequence = new AtomicLong(0);
     private final Matcher segmentMatcher = SEGMENT_PATTERN.matcher("");
@@ -177,6 +177,18 @@ public class Streamer implements IStreamer {
                 streamState.liveSegments.put(seq, bitrateSlot);
                 
                 HlsSegment firstSegment = bitrateSlot.values().iterator().next();
+                // TEMP METRIC - Remove after delay investigation
+                if (firstSegment.getSongMetadata() != null) {
+                    metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "segment_moved_to_live",
+                            Map.of("sequence", seq,
+                                    "songId", firstSegment.getSongMetadata().getSongId().toString(),
+                                    "title", firstSegment.getSongMetadata().getTitle(),
+                                    "artist", firstSegment.getSongMetadata().getArtist(),
+                                    "isFirstSegment", firstSegment.isFirstSegmentOfFragment(),
+                                    "liveSegmentsSize", streamState.liveSegments.size(),
+                                    "timestamp", System.currentTimeMillis()),
+                            firstSegment.getSongMetadata().getTraceId());
+                }
                 if (firstSegment.isFirstSegmentOfFragment() && firstSegment.getSongMetadata() != null) {
                     publishNowPlayingMetric(firstSegment.getSongMetadata());
                 }
@@ -188,6 +200,17 @@ public class Streamer implements IStreamer {
             try {
                 LiveSoundFragment fragment = playlistManager.getNextLiveFragment();
                 if (fragment != null) {
+                    // TEMP METRIC - Remove after delay investigation
+                    if (fragment.getMetadata() != null) {
+                        metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_received_by_streamer",
+                                Map.of("fragmentId", fragment.getSoundFragmentId().toString(),
+                                        "title", fragment.getMetadata().getTitle(),
+                                        "artist", fragment.getMetadata().getArtist(),
+                                        "pendingQueueSize", streamState.pendingQueue.size(),
+                                        "liveSegmentsSize", streamState.liveSegments.size(),
+                                        "timestamp", System.currentTimeMillis()),
+                                fragment.getMetadata().getTraceId());
+                    }
                     addFragmentToPendingQueue(fragment);
                 } else {
                     LOGGER.warnf("%s PlaylistManager returned null fragment", logPrefix());
@@ -208,6 +231,18 @@ public class Streamer implements IStreamer {
 
         ConcurrentLinkedQueue<HlsSegment> firstBitrateQueue = segments.values().iterator().next();
         int segmentCount = firstBitrateQueue.size();
+
+        // TEMP METRIC - Remove after delay investigation
+        if (fragment.getMetadata() != null) {
+            metricPublisher.publishMetric(brand, MetricEventType.INFORMATION, "fragment_added_to_pending",
+                    Map.of("fragmentId", fragment.getSoundFragmentId().toString(),
+                            "title", fragment.getMetadata().getTitle(),
+                            "artist", fragment.getMetadata().getArtist(),
+                            "segmentCount", segmentCount,
+                            "pendingQueueSize", streamState.pendingQueue.size(),
+                            "timestamp", System.currentTimeMillis()),
+                    fragment.getMetadata().getTraceId());
+        }
 
         //LOGGER.infof("%s Added pending frag with %d segments per bitrate",logPrefix(), segmentCount);
 

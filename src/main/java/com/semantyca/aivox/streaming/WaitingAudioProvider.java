@@ -6,25 +6,27 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Stream;
 
 @ApplicationScoped
 public class WaitingAudioProvider {
 
     private static final Logger LOGGER = Logger.getLogger(WaitingAudioProvider.class);
-    private static final String WAITING_AUDIO_RESOURCE = "audio/Waiting_State.wav";
+    private static final String WAITING_AUDIO_FOLDER = "audio/waiting";
+    private static final Random RANDOM = new Random();
 
     @Inject
     AudioSegmentationService segmentationService;
 
-    private UUID waitingSongId;
-    private final Map<Long, List<HlsSegment>> originalWaitingSegments = new ConcurrentHashMap<>();
+    private final List<WaitingAudioEntry> waitingAudioEntries = new ArrayList<>();
     private volatile boolean initialized = false;
 
     public void initialize() {
@@ -33,65 +35,112 @@ public class WaitingAudioProvider {
         }
 
         try {
-            InputStream resourceStream = getClass().getClassLoader().getResourceAsStream(WAITING_AUDIO_RESOURCE);
-            if (resourceStream == null) {
-                LOGGER.warn("Waiting audio not found in resources: " + WAITING_AUDIO_RESOURCE);
+            List<String> audioFiles = loadWaitingAudioFiles();
+            if (audioFiles.isEmpty()) {
+                LOGGER.warn("No waiting audio files found in: " + WAITING_AUDIO_FOLDER);
                 return;
             }
 
-            Path tempWaitingFile = Files.createTempFile("waiting_state_", ".wav");
-            Files.copy(resourceStream, tempWaitingFile, StandardCopyOption.REPLACE_EXISTING);
-            resourceStream.close();
+            LOGGER.info("Found " + audioFiles.size() + " waiting audio file(s)");
+            int processedCount = 0;
 
-            waitingSongId = UUID.randomUUID();
-            SongMetadata waitingMetadata = new SongMetadata(waitingSongId, "Waiting...", "Station");
+            for (String audioFile : audioFiles) {
+                try {
+                    String resourcePath = WAITING_AUDIO_FOLDER + "/" + audioFile;
+                    InputStream resourceStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
+                    if (resourceStream == null) {
+                        LOGGER.warn("Could not load: " + resourcePath);
+                        continue;
+                    }
 
-            // Use FFmpeg to properly segment the audio
-            segmentationService.slice(waitingMetadata, tempWaitingFile, List.of(128000L, 64000L))
-                    .subscribe().with(
-                            segments -> {
-                                if (segments.isEmpty()) {
-                                    LOGGER.warn("Failed to slice waiting audio");
-                                    return;
-                                }
+                    Path tempWaitingFile = Files.createTempFile("waiting_", ".wav");
+                    Files.copy(resourceStream, tempWaitingFile, StandardCopyOption.REPLACE_EXISTING);
+                    resourceStream.close();
 
-                                for (Map.Entry<Long, ConcurrentLinkedQueue<HlsSegment>> entry : segments.entrySet()) {
-                                    List<HlsSegment> segmentList = new ArrayList<>(entry.getValue());
-                                    originalWaitingSegments.put(entry.getKey(), segmentList);
-                                }
+                    UUID songId = UUID.randomUUID();
+                    SongMetadata waitingMetadata = new SongMetadata(songId, "Waiting...", "Station");
 
-                                initialized = true;
-                                LOGGER.info("Waiting audio initialized with " + segments.get(128000L).size() + " segments per bitrate");
+                    Map<Long, ConcurrentLinkedQueue<HlsSegment>> segments = segmentationService
+                            .slice(waitingMetadata, tempWaitingFile, List.of(128000L, 64000L))
+                            .await().indefinitely();
 
-                                // Clean up temp file
-                                try {
-                                    Files.deleteIfExists(tempWaitingFile);
-                                } catch (Exception e) {
-                                    LOGGER.warn("Failed to delete temp waiting file", e);
-                                }
-                            },
-                            error -> LOGGER.error("Error slicing waiting audio: " + error.getMessage(), error)
-                    );
+                    if (segments.isEmpty()) {
+                        LOGGER.warn("Failed to slice: " + audioFile);
+                        Files.deleteIfExists(tempWaitingFile);
+                        continue;
+                    }
+
+                    Map<Long, List<HlsSegment>> segmentMap = new ConcurrentHashMap<>();
+                    for (Map.Entry<Long, ConcurrentLinkedQueue<HlsSegment>> entry : segments.entrySet()) {
+                        segmentMap.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                    }
+
+                    WaitingAudioEntry entry = new WaitingAudioEntry(songId, audioFile, segmentMap);
+                    waitingAudioEntries.add(entry);
+                    processedCount++;
+
+                    LOGGER.info("Loaded waiting audio: " + audioFile + " (" + segments.get(128000L).size() + " segments)");
+
+                    Files.deleteIfExists(tempWaitingFile);
+                } catch (Exception e) {
+                    LOGGER.error("Error processing waiting audio file: " + audioFile, e);
+                }
+            }
+
+            if (processedCount > 0) {
+                initialized = true;
+                LOGGER.info("Waiting audio initialized with " + processedCount + " file(s)");
+            } else {
+                LOGGER.warn("No waiting audio files were successfully processed");
+            }
         } catch (Exception e) {
             LOGGER.error("Failed to initialize waiting audio: " + e.getMessage(), e);
         }
     }
 
+    private List<String> loadWaitingAudioFiles() {
+        List<String> audioFiles = new ArrayList<>();
+        try {
+            URI uri = getClass().getClassLoader().getResource(WAITING_AUDIO_FOLDER).toURI();
+            Path folderPath;
+
+            if (uri.getScheme().equals("jar")) {
+                FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap());
+                folderPath = fileSystem.getPath(WAITING_AUDIO_FOLDER);
+            } else {
+                folderPath = Paths.get(uri);
+            }
+
+            try (Stream<Path> paths = Files.walk(folderPath, 1)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(p -> p.toString().toLowerCase().endsWith(".wav"))
+                        .forEach(p -> audioFiles.add(p.getFileName().toString()));
+            }
+        } catch (IOException | URISyntaxException e) {
+            LOGGER.error("Error loading waiting audio files from folder: " + WAITING_AUDIO_FOLDER, e);
+        } catch (NullPointerException e) {
+            LOGGER.warn("Waiting audio folder not found: " + WAITING_AUDIO_FOLDER);
+        }
+        return audioFiles;
+    }
+
     public Uni<LiveSoundFragment> createWaitingFragment() {
-        if (!initialized || originalWaitingSegments.isEmpty()) {
+        if (!initialized || waitingAudioEntries.isEmpty()) {
             LOGGER.warn("Waiting audio not initialized, returning null");
             return Uni.createFrom().nullItem();
         }
 
         return Uni.createFrom().item(() -> {
+            WaitingAudioEntry selectedEntry = waitingAudioEntries.get(RANDOM.nextInt(waitingAudioEntries.size()));
+            
             LiveSoundFragment fragment = new LiveSoundFragment();
-            fragment.setSoundFragmentId(waitingSongId);
-            fragment.setMetadata(new SongMetadata(waitingSongId, "Waiting...", "Station"));
+            fragment.setSoundFragmentId(selectedEntry.songId);
+            fragment.setMetadata(new SongMetadata(selectedEntry.songId, "Waiting...", "Station"));
             fragment.setPriority(999);
 
             Map<Long, ConcurrentLinkedQueue<HlsSegment>> clonedSegments = new ConcurrentHashMap<>();
 
-            for (Map.Entry<Long, List<HlsSegment>> entry : originalWaitingSegments.entrySet()) {
+            for (Map.Entry<Long, List<HlsSegment>> entry : selectedEntry.segments.entrySet()) {
                 ConcurrentLinkedQueue<HlsSegment> queue = new ConcurrentLinkedQueue<>();
 
                 for (HlsSegment originalSegment : entry.getValue()) {
@@ -110,11 +159,14 @@ public class WaitingAudioProvider {
             }
 
             fragment.setSegments(clonedSegments);
+            LOGGER.debug("Selected waiting audio: " + selectedEntry.fileName);
             return fragment;
         });
     }
 
     public boolean isWaitingAudioAvailable() {
-        return initialized && !originalWaitingSegments.isEmpty();
+        return initialized && !waitingAudioEntries.isEmpty();
     }
+
+    private record WaitingAudioEntry(UUID songId, String fileName, Map<Long, List<HlsSegment>> segments) {}
 }

@@ -12,7 +12,7 @@ public interface HlsConfig {
     int getSegmentDuration();
     
     @WithName("max.visible.segments")
-    @WithDefault("20")
+    @WithDefault("10")
     int getMaxVisibleSegments();
     
     @WithName("bitrates")
